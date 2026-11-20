@@ -1,7 +1,23 @@
-export type User = { id: string; email: string; name: string; isAdmin: boolean };
+export type User = {
+  id: string;
+  email: string;
+  name: string;
+  isAdmin: boolean;
+  /** Deze sessie is met een passkey ingelogd (telt als tweestapsverificatie). */
+  strong: boolean;
+  hasPassword: boolean;
+  /** Aantal passkeys van dit account. */
+  passkeys: number;
+};
 export type Role = "secretaris" | "deelnemer";
 /** Een organisatie is een eigen omgeving; "beheerder" beheert die hele omgeving. */
-export type Organisation = { id: string; name: string; role: "beheerder" | "lid" };
+export type Organisation = {
+  id: string;
+  name: string;
+  role: "beheerder" | "lid";
+  /** Alleen toegankelijk als je met een passkey bent ingelogd. */
+  requirePasskey: boolean;
+};
 export type MeetingStatus = "concept" | "gepubliceerd" | "afgerond";
 
 export type Overleg = {
@@ -36,7 +52,7 @@ export type Member = {
   email: string;
   role: Role;
   active?: boolean;
-  hasPassword?: boolean;
+  activated?: boolean;
   attendance?: "aanwezig" | "afwezig" | null;
 };
 

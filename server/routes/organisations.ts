@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { requireOrgAdmin } from "../access";
+import { activated } from "../auth";
 import { q, q1 } from "../db";
 import { bad, forbidden, HttpError, str, uuid } from "../http";
 import { findOrInviteUser, reinvite } from "../people";
@@ -15,7 +16,7 @@ route.get(
   "/api/organisations",
   async () => {
     const organisations = await q(
-      `SELECT org.id, org.name, org.archived,
+      `SELECT org.id, org.name, org.archived, org.require_passkey,
               (SELECT count(*)::int FROM overleggen o WHERE o.organisation_id = org.id) AS overleg_count,
               COALESCE((SELECT json_agg(json_build_object('id', u.id, 'name', u.name, 'email', u.email) ORDER BY lower(u.name))
                           FROM organisation_admins a JOIN users u ON u.id = a.user_id
@@ -61,6 +62,14 @@ route.patch("/api/organisations/:id", async (c) => {
     vals.push(b.archived === true);
     sets.push(`archived = $${vals.length}`);
   }
+  if (b.requirePasskey !== undefined) {
+    // Alleen een beheerder van de organisatie zelf, en alleen vanuit een passkey-sessie:
+    // zo sluit hij zichzelf niet buiten en kan een gestolen wachtwoord de eis niet uitzetten.
+    await requireOrgAdmin(c.user, id);
+    if (!c.user.strong) throw forbidden("Log in met een passkey om dit te wijzigen.");
+    vals.push(b.requirePasskey === true);
+    sets.push(`require_passkey = $${vals.length}`);
+  }
   if (!sets.length) throw bad("Geen wijzigingen.");
   await q(`UPDATE organisations SET ${sets.join(", ")} WHERE id = $1`, vals);
   return { ok: true };
@@ -71,8 +80,9 @@ route.get("/api/organisations/:id/people", async (c) => {
   const id = uuid(c.params.id, "Organisatie");
   await requireOrgAdmin(c.user, id);
   const people = await q(
-    `SELECT u.id, u.name, u.email, u.active, (u.password_hash IS NOT NULL) AS has_password,
+    `SELECT u.id, u.name, u.email, u.active, ${activated("u")} AS activated,
             EXISTS (SELECT 1 FROM organisation_admins a WHERE a.organisation_id = $1 AND a.user_id = u.id) AS is_admin,
+            EXISTS (SELECT 1 FROM passkeys pk WHERE pk.user_id = u.id) AS has_passkey,
             COALESCE((SELECT json_agg(json_build_object('id', o.id, 'name', o.name, 'role', m.role) ORDER BY lower(o.name))
                         FROM memberships m JOIN overleggen o ON o.id = m.overleg_id
                        WHERE o.organisation_id = $1 AND m.user_id = u.id), '[]'::json) AS overleggen

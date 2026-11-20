@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth, useUser } from "./auth";
+import { PasskeyButton } from "./components/PasskeyButton";
+import { addPasskey, deviceName, loginWithPasskey, passkeysSupported } from "./passkeys";
 import { Brand, Button, Empty, Icon, type IconName } from "./ui";
 
 const NAV: { to: string; label: string; icon: IconName; end?: boolean }[] = [
@@ -135,9 +137,60 @@ export default function Layout() {
 }
 
 /** Pagina's die binnen een organisatie vallen. Zonder organisatie valt er niets te tonen. */
+/** Een organisatie die een passkey eist, terwijl deze sessie met een wachtwoord is ingelogd. */
+function PasskeyGate({ organisation }: { organisation: string }) {
+  const user = useUser();
+  const { refresh } = useAuth();
+  // De eis kan intussen zijn ingetrokken: controleer de actuele stand zodra de blokkade verschijnt.
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+  return (
+    <div className="page narrow">
+      <div className="page-head">
+        <div>
+          <h1>Passkey nodig</h1>
+          <p className="lead">
+            <strong>{organisation}</strong> is extra beveiligd: je komt er alleen in als je met een passkey bent ingelogd. Je bent nu met je wachtwoord ingelogd.
+          </p>
+        </div>
+      </div>
+      <div className="card">
+        <div className="card-body stack">
+          {!passkeysSupported() ? (
+            <div className="notice warm">Deze browser ondersteunt geen passkeys. Gebruik een recente versie van Chrome, Edge, Safari of Firefox.</div>
+          ) : user.passkeys > 0 ? (
+            <>
+              <p>Log opnieuw in met je passkey. Dat gaat met je vingerafdruk, gezicht of de pincode van je apparaat.</p>
+              <div>
+                <PasskeyButton run={loginWithPasskey} onDone={refresh}>
+                  Inloggen met passkey
+                </PasskeyButton>
+              </div>
+            </>
+          ) : (
+            <>
+              <p>
+                Je hebt nog geen passkey. Maak er nu een aan op dit apparaat: daarna log je in met je vingerafdruk, gezicht of pincode, zonder wachtwoord.
+              </p>
+              <div>
+                <PasskeyButton run={() => addPasskey(deviceName())} onDone={refresh}>
+                  Passkey aanmaken
+                </PasskeyButton>
+              </div>
+            </>
+          )}
+          <p className="small muted">Andere organisaties blijven bereikbaar via de organisatiekiezer in het menu.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function RequireOrganisation() {
   const user = useUser();
   const { org } = useAuth();
+  if (org?.requirePasskey && !user.strong) return <PasskeyGate organisation={org.name} />;
   if (org) return <Outlet />;
   return (
     <div className="page narrow">

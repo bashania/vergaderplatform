@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { createUserToken } from "../auth";
+import { activated, createUserToken } from "../auth";
 import { dbHost, q, q1 } from "../db";
 import { bad, email, env, HttpError, json, notFound, optStr, str, uuid } from "../http";
 import { store } from "../files";
@@ -51,7 +51,8 @@ route.get(
   async () => {
     const users = await q(
       `SELECT u.id, u.email, u.name, u.is_admin, u.active, u.created_at, u.last_login_at,
-              (u.password_hash IS NOT NULL) AS has_password,
+              ${activated("u")} AS activated,
+              (SELECT count(*)::int FROM passkeys pk WHERE pk.user_id = u.id) AS passkeys,
               COALESCE((SELECT json_agg(org.name ORDER BY lower(org.name))
                           FROM organisations org
                          WHERE EXISTS (SELECT 1 FROM organisation_admins a WHERE a.organisation_id = org.id AND a.user_id = u.id)
@@ -124,13 +125,13 @@ route.post(
   "/api/users/:id/token",
   async (c) => {
     const id = uuid(c.params.id, "Gebruiker");
-    const u = await q1<{ hasPassword: boolean; active: boolean }>(
-      `SELECT (password_hash IS NOT NULL) AS has_password, active FROM users WHERE id = $1`,
+    const u = await q1<{ activated: boolean; active: boolean }>(
+      `SELECT ${activated("users")} AS activated, active FROM users WHERE id = $1`,
       [id],
     );
     if (!u) throw notFound("Gebruiker niet gevonden.");
     if (!u.active) throw bad("Dit account is geblokkeerd. Activeer het eerst.");
-    return createUserToken(id, u.hasPassword ? "reset" : "invite", c.user.id);
+    return createUserToken(id, u.activated ? "reset" : "invite", c.user.id);
   },
   { admin: true },
 );

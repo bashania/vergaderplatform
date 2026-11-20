@@ -1,6 +1,6 @@
 import type { User } from "./auth";
 import { q1 } from "./db";
-import { bad, forbidden, HttpError, notFound } from "./http";
+import { bad, forbidden, HttpError, notFound, passkeyRequired } from "./http";
 import type { Ctx } from "./router";
 
 /**
@@ -33,6 +33,7 @@ export const VISIBLE = `(acc.role = 'secretaris' OR mt.status <> 'concept')`;
 /** De organisatie waarin de gebruiker nu werkt (header x-organisation). */
 export function requireOrgId(c: Ctx): string {
   if (!c.orgId) throw bad("Kies eerst een organisatie.");
+  if (c.orgLocked) throw passkeyRequired(c.orgId);
   return c.orgId;
 }
 
@@ -43,15 +44,20 @@ export const accParams = (c: Ctx): [string, string] => [c.user.id, requireOrgId(
  * (alleen voor het beheren van de organisatie zelf, niet voor de inhoud).
  */
 export async function requireOrgAdmin(user: User, orgId: string, allowPlatformAdmin = false): Promise<void> {
-  const row = await q1<{ isAdmin: boolean; isMember: boolean }>(
-    `SELECT EXISTS (SELECT 1 FROM organisation_admins WHERE organisation_id = org.id AND user_id = $2) AS is_admin,
+  const row = await q1<{ isAdmin: boolean; isMember: boolean; requirePasskey: boolean }>(
+    `SELECT org.require_passkey,
+            EXISTS (SELECT 1 FROM organisation_admins WHERE organisation_id = org.id AND user_id = $2) AS is_admin,
             EXISTS (SELECT 1 FROM memberships m JOIN overleggen o ON o.id = m.overleg_id
                      WHERE o.organisation_id = org.id AND m.user_id = $2) AS is_member
        FROM organisations org WHERE org.id = $1`,
     [orgId, user.id],
   );
   if (!row) throw notFound("Organisatie niet gevonden.");
-  if (row.isAdmin || (allowPlatformAdmin && user.isAdmin)) return;
+  if (row.isAdmin) {
+    if (row.requirePasskey && !user.strong) throw passkeyRequired(orgId);
+    return;
+  }
+  if (allowPlatformAdmin && user.isAdmin) return;
   // Wie de organisatie niet kent, krijgt ook niet te horen dat ze bestaat.
   if (!row.isMember) throw notFound("Organisatie niet gevonden.");
   throw forbidden("Alleen een beheerder van deze organisatie kan dit doen.");
@@ -61,15 +67,19 @@ export async function overlegAccess(
   user: User,
   overlegId: string,
 ): Promise<{ role: Role | null; orgAdmin: boolean; organisationId: string } | null> {
-  const row = await q1<{ role: Role | null; orgAdmin: boolean; organisationId: string }>(
+  const row = await q1<{ role: Role | null; orgAdmin: boolean; organisationId: string; requirePasskey: boolean }>(
     `SELECT o.organisation_id,
+            (SELECT require_passkey FROM organisations WHERE id = o.organisation_id) AS require_passkey,
             (SELECT role FROM memberships WHERE overleg_id = o.id AND user_id = $2) AS role,
             EXISTS (SELECT 1 FROM organisation_admins WHERE organisation_id = o.organisation_id AND user_id = $2) AS org_admin
        FROM overleggen o WHERE o.id = $1`,
     [overlegId, user.id],
   );
   if (!row) return null;
-  return { ...row, role: row.orgAdmin ? "secretaris" : row.role };
+  const role: Role | null = row.orgAdmin ? "secretaris" : row.role;
+  // Alleen wie er echt bij hoort krijgt te horen dat een passkey nodig is; voor anderen bestaat het overleg niet.
+  if (role && row.requirePasskey && !user.strong) throw passkeyRequired(row.organisationId);
+  return { role, orgAdmin: row.orgAdmin, organisationId: row.organisationId };
 }
 
 export async function overlegRole(user: User, overlegId: string): Promise<Role | null> {

@@ -916,6 +916,26 @@ dialog.modal::backdrop {
 .auth-card .brand {
   color: var(--ink);
 }
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-3);
+  font-size: 0.87rem;
+}
+.divider::before,
+.divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+.auth-card .btn {
+  width: 100%;
+}
+.auth-card .form-foot .btn {
+  width: auto;
+}
 .splash {
   min-height: 100%;
   display: grid;

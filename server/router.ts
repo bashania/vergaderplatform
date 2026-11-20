@@ -13,6 +13,8 @@ export type Ctx = {
   ip: string;
   /** De organisatie waarin de gebruiker werkt (header x-organisation), of null. */
   orgId: string | null;
+  /** De gekozen organisatie eist een passkey en deze sessie is daar niet mee ingelogd. */
+  orgLocked: boolean;
   /** Regio waarin de functie draait (bijv. "fra"). */
   serverRegion: string;
   /** Body als JSON-object. */
@@ -77,7 +79,9 @@ export async function handle(req: Request, context: Context): Promise<Response> 
     const mutating = req.method !== "GET" && req.method !== "HEAD";
     if (mutating) checkOrigin(req, url);
 
-    const session = await userFromRequest(req, url);
+    const header = req.headers.get("x-organisation") ?? "";
+    const orgId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(header) ? header.toLowerCase() : null;
+    const session = await userFromRequest(req, url, orgId);
     if (!found.opts.public && !session) throw new HttpError(401, "Je bent niet (meer) ingelogd.");
     if (found.opts.admin && !session?.user.isAdmin) throw forbidden("Alleen voor beheerders.");
 
@@ -88,9 +92,8 @@ export async function handle(req: Request, context: Context): Promise<Response> 
       params,
       user: session?.user as User,
       ip: context.ip ?? "",
-      orgId: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.headers.get("x-organisation") ?? "")
-        ? req.headers.get("x-organisation")!.toLowerCase()
-        : null,
+      orgId,
+      orgLocked: session?.orgLocked ?? false,
       serverRegion: context.server?.region ?? "onbekend",
       body: async () => {
         let data: unknown;
@@ -123,7 +126,7 @@ export async function handle(req: Request, context: Context): Promise<Response> 
     }
     return res;
   } catch (e) {
-    if (e instanceof HttpError) return json({ error: e.message }, e.status);
+    if (e instanceof HttpError) return json({ error: e.message, ...e.extra }, e.status);
     console.error(`${req.method} ${url.pathname}`, e);
     return json({ error: "Er ging iets mis op de server. Probeer het opnieuw." }, 500);
   }
