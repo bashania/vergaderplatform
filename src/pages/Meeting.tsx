@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, saveBlob } from "../api";
 import { useAuth, useUser } from "../auth";
@@ -245,7 +245,7 @@ function print(mode: "agenda" | "verslag") {
 export default function MeetingPage() {
   const { id } = useParams();
   const user = useUser();
-  const { orgName } = useAuth();
+  const { ensureOrg } = useAuth();
   const navigate = useNavigate();
   const run = useRun();
   const { data, loading, error, reload } = useLoad<MeetingDetail>(`/api/meetings/${id}`);
@@ -256,6 +256,12 @@ export default function MeetingPage() {
     setModal(null);
     void reload();
   };
+
+  // Geopend via een directe link: werk dan verder in de organisatie van deze vergadering.
+  const organisationId = data?.meeting.organisationId;
+  useEffect(() => {
+    if (organisationId) ensureOrg(organisationId);
+  }, [organisationId, ensureOrg]);
 
   if (!data) {
     return (
@@ -362,14 +368,13 @@ export default function MeetingPage() {
   return (
     <div className="page">
       <div className="print-only">
-        <strong>{[meeting.organisation || orgName, meeting.overlegName].filter(Boolean).join(" · ")}</strong>
+        <strong>{[meeting.organisationName, meeting.overlegName].filter(Boolean).join(" · ")}</strong>
       </div>
 
       <div className="page-head">
         <div>
           <div className="crumb no-print">
-            <Link to="/overleggen">Overleggen</Link> › {meeting.organisation && `${meeting.organisation} › `}
-            <Link to={`/overleggen/${meeting.overlegId}`}>{meeting.overlegName}</Link>
+            <Link to="/overleggen">Overleggen</Link> › <Link to={`/overleggen/${meeting.overlegId}`}>{meeting.overlegName}</Link>
           </div>
           <div className="row">
             <h1>{meeting.title}</h1>

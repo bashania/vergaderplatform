@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { useUser } from "../auth";
+import { useAuth, useUser } from "../auth";
 import { ActionList } from "../components/Records";
 import { DocList } from "../components/Docs";
 import {
@@ -37,7 +37,7 @@ export function MeetingRow({ m, past }: { m: MeetingSummary; past?: boolean }) {
           {m.myAttendance === "afwezig" && <span className="badge warm">Afgemeld</span>}
         </div>
         <div className="meta">
-          {m.overlegName && <span>{[m.organisation, m.overlegName].filter(Boolean).join(" · ")}</span>}
+          {m.overlegName && <span>{m.overlegName}</span>}
           <span>
             <Icon name="clock" size={14} />
             {fmtDate(m.startsAt)}, {timeRange(m.startsAt, m.durationMin)}
@@ -64,6 +64,7 @@ function greeting() {
 
 export default function DashboardPage() {
   const user = useUser();
+  const { org } = useAuth();
   const { data, loading, error, reload } = useLoad<Dashboard>("/api/dashboard");
   return (
     <div className="page">
@@ -72,7 +73,9 @@ export default function DashboardPage() {
           <h1>
             {greeting()}, {firstName(user.name)}
           </h1>
-          <p className="lead">Je komende vergaderingen, je openstaande acties en de laatste stukken.</p>
+          <p className="lead">
+            Je komende vergaderingen, openstaande acties en de laatste stukken van <strong>{org?.name}</strong>.
+          </p>
         </div>
       </div>
 
@@ -92,7 +95,7 @@ export default function DashboardPage() {
                 </ul>
               ) : (
                 <Empty title="Geen vergaderingen gepland">
-                  {user.isAdmin ? (
+                  {org?.role === "beheerder" ? (
                     <>
                       Maak een <Link to="/overleggen">overleg</Link> aan en plan daar de eerste vergadering.
                     </>

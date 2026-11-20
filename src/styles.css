@@ -192,6 +192,29 @@ textarea {
   text-transform: uppercase;
   color: rgb(255 255 255 / 55%);
 }
+.orgswitch {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.orgswitch .nav-label {
+  margin: 0 8px;
+}
+.orgswitch select,
+.orgswitch .orgname {
+  padding: 8px 12px;
+  border: 1px solid rgb(255 255 255 / 25%);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 12%);
+  color: #fff;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.orgswitch select option {
+  color: var(--text);
+  background: var(--surface);
+}
 .sidebar-foot {
   margin-top: auto;
   padding-top: 12px;

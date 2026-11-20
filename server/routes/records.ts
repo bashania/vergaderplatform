@@ -89,7 +89,7 @@ route.get("/api/decisions", async (c) => {
         AND CASE WHEN $3::uuid IS NULL THEN NOT acc.archived ELSE d.overleg_id = $3::uuid END
       ORDER BY d.decided_on DESC, d.number DESC
       LIMIT 1000`,
-    [...accParams(c.user), overlegId],
+    [...accParams(c), overlegId],
   );
   return { decisions };
 });
@@ -194,7 +194,7 @@ route.get("/api/actions", async (c) => {
         AND (NOT $5::boolean OR a.owner_id = $1::uuid)
       ORDER BY (a.status <> 'open'), a.due_date NULLS LAST, a.created_at
       LIMIT 1000`,
-    [...accParams(c.user), overlegId, onlyOpen, mine],
+    [...accParams(c), overlegId, onlyOpen, mine],
   );
   return { actions };
 });
@@ -202,11 +202,11 @@ route.get("/api/actions", async (c) => {
 // ---------- dashboard ----------
 
 route.get("/api/dashboard", async (c) => {
-  const p = accParams(c.user);
+  const p = accParams(c);
   const [upcoming, myActions, recentDecisions, recentDocuments] = await Promise.all([
     q(
       `WITH ${ACC}
-       SELECT mt.id, mt.title, mt.starts_at, mt.duration_min, mt.location, mt.status, mt.overleg_id, acc.overleg_name, acc.organisation,
+       SELECT mt.id, mt.title, mt.starts_at, mt.duration_min, mt.location, mt.status, mt.overleg_id, acc.overleg_name,
               (SELECT count(*)::int FROM agenda_items ai WHERE ai.meeting_id = mt.id) AS item_count,
               (SELECT count(*)::int FROM documents d WHERE d.meeting_id = mt.id AND d.status = 'ready') AS document_count,
               (SELECT status FROM attendance at WHERE at.meeting_id = mt.id AND at.user_id = $1::uuid) AS my_attendance
@@ -281,7 +281,7 @@ route.get("/api/search", async (c) => {
      ) r
      ORDER BY r.at DESC
      LIMIT 100`,
-    [...accParams(c.user), like],
+    [...accParams(c), like],
   );
   return { results };
 });

@@ -11,6 +11,8 @@ export type Ctx = {
   /** Ingelogde gebruiker. Bij publieke routes kan dit null zijn. */
   user: User;
   ip: string;
+  /** De organisatie waarin de gebruiker werkt (header x-organisation), of null. */
+  orgId: string | null;
   /** Regio waarin de functie draait (bijv. "fra"). */
   serverRegion: string;
   /** Body als JSON-object. */
@@ -86,6 +88,9 @@ export async function handle(req: Request, context: Context): Promise<Response> 
       params,
       user: session?.user as User,
       ip: context.ip ?? "",
+      orgId: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.headers.get("x-organisation") ?? "")
+        ? req.headers.get("x-organisation")!.toLowerCase()
+        : null,
       serverRegion: context.server?.region ?? "onbekend",
       body: async () => {
         let data: unknown;

@@ -1,46 +1,27 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
-import { useUser } from "../auth";
+import { useAuth } from "../auth";
 import { fmtDateTime, type Overleg } from "../lib";
 import { Button, Empty, Field, Form, Loader, Modal, useLoad } from "../ui";
 
-/** Organisatie kiezen uit de bestaande namen of een nieuwe typen: voorkomt varianten van dezelfde naam. */
-export function OrganisationField({ value, onChange, known }: { value: string; onChange: (v: string) => void; known: string[] }) {
-  return (
-    <Field label="Organisatie" hint="Bij welk bedrijf, welke opleiding of welke commissie hoort dit overleg? Staat op afgedrukte agenda's.">
-      <input className="input" list="organisaties" maxLength={120} value={value} onChange={(e) => onChange(e.target.value)} />
-      <datalist id="organisaties">
-        {known.map((o) => (
-          <option key={o} value={o} />
-        ))}
-      </datalist>
-    </Field>
-  );
-}
-
-export const organisationsOf = (overleggen: Overleg[]) =>
-  [...new Set(overleggen.map((o) => o.organisation).filter(Boolean))].sort((a, b) => a.localeCompare(b, "nl"));
-
-function NewOverleg({ known, onClose }: { known: string[]; onClose: () => void }) {
+function NewOverleg({ organisation, onClose }: { organisation: string; onClose: () => void }) {
   const navigate = useNavigate();
   const [name, setName] = useState("");
-  const [organisation, setOrganisation] = useState("");
   const [description, setDescription] = useState("");
   return (
-    <Modal title="Nieuw overleg" onClose={onClose}>
+    <Modal title={`Nieuw overleg bij ${organisation}`} onClose={onClose}>
       <Form
         submitLabel="Aanmaken"
         onCancel={onClose}
         onSubmit={async () => {
-          const { id } = await api<{ id: string }>("/api/overleggen", { method: "POST", body: { name, organisation, description } });
+          const { id } = await api<{ id: string }>("/api/overleggen", { method: "POST", body: { name, description } });
           navigate(`/overleggen/${id}?tab=leden`);
         }}
       >
-        <Field label="Naam" hint="Bijvoorbeeld: MT-overleg, bestuursvergadering, projectoverleg.">
+        <Field label="Naam" hint="Bijvoorbeeld: bestuursvergadering, MT-overleg, projectoverleg.">
           <input className="input" required autoFocus maxLength={120} value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
-        <OrganisationField value={organisation} onChange={setOrganisation} known={known} />
         <Field label="Omschrijving (optioneel)" hint="Doel, frequentie of vaste afspraken van dit overleg.">
           <textarea className="input" maxLength={1000} value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>
@@ -51,27 +32,23 @@ function NewOverleg({ known, onClose }: { known: string[]; onClose: () => void }
 }
 
 export default function OverleggenPage() {
-  const user = useUser();
+  const { org } = useAuth();
   const { data, loading, error } = useLoad<{ overleggen: Overleg[] }>("/api/overleggen");
   const [creating, setCreating] = useState(false);
-  const all = data?.overleggen ?? [];
-  const active = all.filter((o) => !o.archived);
-  const archived = all.filter((o) => o.archived);
-
-  // Groeperen per organisatie; overleggen zonder organisatie komen onderaan.
-  const groups = [...organisationsOf(active), ""]
-    .map((org) => ({ org, items: active.filter((o) => o.organisation === org) }))
-    .filter((g) => g.items.length > 0);
-  const showHeadings = groups.some((g) => g.org);
+  const canCreate = org?.role === "beheerder";
+  const active = data?.overleggen.filter((o) => !o.archived) ?? [];
+  const archived = data?.overleggen.filter((o) => o.archived) ?? [];
 
   return (
     <div className="page">
       <div className="page-head">
         <div>
           <h1>Overleggen</h1>
-          <p className="lead">Elk overleg heeft zijn eigen deelnemers, vergaderingen, besluitenlijst en actielijst.</p>
+          <p className="lead">
+            De overleggen van <strong>{org?.name}</strong> waar je aan deelneemt. Elk overleg heeft eigen deelnemers, vergaderingen, besluiten en acties.
+          </p>
         </div>
-        {user.isAdmin && (
+        {canCreate && (
           <Button icon="plus" onClick={() => setCreating(true)}>
             Nieuw overleg
           </Button>
@@ -79,40 +56,36 @@ export default function OverleggenPage() {
       </div>
 
       <Loader loading={loading} error={error}>
-        {active.length === 0 && (
+        {active.length ? (
+          <div className="grid-2">
+            {active.map((o) => (
+              <OverlegCard key={o.id} o={o} />
+            ))}
+          </div>
+        ) : (
           <div className="card">
-            <Empty title="Je neemt nog aan geen overleg deel">
-              {user.isAdmin ? "Maak het eerste overleg aan met de knop rechtsboven." : "Vraag de secretaris van je overleg om je toe te voegen."}
+            <Empty title="Nog geen overleg">
+              {canCreate ? "Maak het eerste overleg aan met de knop rechtsboven." : "Vraag de secretaris van je overleg om je toe te voegen."}
             </Empty>
           </div>
         )}
-        {groups.map((g) => (
-          <section className="stack" key={g.org || "zonder"}>
-            {showHeadings && <h2 className="section-title">{g.org || "Zonder organisatie"}</h2>}
-            <div className="grid-2">
-              {g.items.map((o) => (
-                <OverlegCard key={o.id} o={o} />
-              ))}
-            </div>
-          </section>
-        ))}
         {archived.length > 0 && (
           <section className="stack">
             <h2 className="section-title">Gearchiveerd</h2>
             <div className="grid-2">
               {archived.map((o) => (
-                <OverlegCard key={o.id} o={o} showOrganisation />
+                <OverlegCard key={o.id} o={o} />
               ))}
             </div>
           </section>
         )}
       </Loader>
-      {creating && <NewOverleg known={organisationsOf(all)} onClose={() => setCreating(false)} />}
+      {creating && org && <NewOverleg organisation={org.name} onClose={() => setCreating(false)} />}
     </div>
   );
 }
 
-function OverlegCard({ o, showOrganisation }: { o: Overleg; showOrganisation?: boolean }) {
+function OverlegCard({ o }: { o: Overleg }) {
   return (
     <article className="card">
       <div className="card-body stack" style={{ gap: 10 }}>
@@ -124,7 +97,6 @@ function OverlegCard({ o, showOrganisation }: { o: Overleg; showOrganisation?: b
           </h2>
           {o.role === "secretaris" && <span className="badge accent">Secretaris</span>}
         </div>
-        {showOrganisation && o.organisation && <span className="sub-label">{o.organisation}</span>}
         {o.description && <p className="muted small pre">{o.description}</p>}
         <div className="meta">
           <span>

@@ -1,17 +1,18 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
-import { useUser } from "../auth";
+import { useAuth, useUser } from "../auth";
 import { DocList, UploadButton } from "../components/Docs";
 import { LinkModal, type LinkInfo } from "../components/LinkModal";
 import { ActionList, DecisionTable } from "../components/Records";
-import { fromLocalInput, toLocalInput, type Action, type Decision, type Doc, type Member, type MeetingSummary, type Overleg, type Role } from "../lib";
+import { fromLocalInput, toLocalInput, type Action, type Decision, type Doc, type Member, type MeetingSummary, type Role } from "../lib";
 import { Button, Empty, Field, Form, Loader, Modal, useLoad, useRun } from "../ui";
 import { MeetingRow } from "./Dashboard";
-import { OrganisationField, organisationsOf } from "./Overleggen";
 
 type OverlegDetail = {
-  overleg: { id: string; name: string; organisation: string; description: string; archived: boolean };
+  overleg: { id: string; name: string; description: string; archived: boolean; organisationId: string; organisationName: string };
+  /** De gebruiker is beheerder van de organisatie van dit overleg. */
+  orgAdmin: boolean;
   role: Role;
   members: Member[];
   meetings: MeetingSummary[];
@@ -101,19 +102,16 @@ function NewMeeting({ data, onClose }: { data: OverlegDetail; onClose: () => voi
 }
 
 function EditOverleg({ data, onClose, onSaved }: { data: OverlegDetail; onClose: () => void; onSaved: () => void }) {
-  const user = useUser();
   const [name, setName] = useState(data.overleg.name);
-  const [organisation, setOrganisation] = useState(data.overleg.organisation);
   const [description, setDescription] = useState(data.overleg.description);
   const [archived, setArchived] = useState(data.overleg.archived);
-  const known = useLoad<{ overleggen: Overleg[] }>("/api/overleggen");
   return (
     <Modal title="Overleg bewerken" onClose={onClose}>
       <Form
         onCancel={onClose}
         onSubmit={async () => {
-          const body: Record<string, unknown> = { name, organisation, description };
-          if (user.isAdmin) body.archived = archived;
+          const body: Record<string, unknown> = { name, description };
+          if (data.orgAdmin) body.archived = archived;
           await api(`/api/overleggen/${data.overleg.id}`, { method: "PATCH", body });
           onSaved();
         }}
@@ -121,11 +119,10 @@ function EditOverleg({ data, onClose, onSaved }: { data: OverlegDetail; onClose:
         <Field label="Naam">
           <input className="input" required maxLength={120} value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
-        <OrganisationField value={organisation} onChange={setOrganisation} known={organisationsOf(known.data?.overleggen ?? [])} />
         <Field label="Omschrijving">
           <textarea className="input" maxLength={1000} value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>
-        {user.isAdmin && (
+        {data.orgAdmin && (
           <label className="check">
             <input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} />
             Gearchiveerd (blijft raadpleegbaar, verdwijnt uit de overzichten)
@@ -259,6 +256,13 @@ export default function OverlegPage() {
   const actions = useLoad<{ actions: Action[] }>(tab === "acties" ? `/api/actions?overleg=${id}${allActions ? "&status=alle" : ""}` : null);
   const [modal, setModal] = useState<"meeting" | "edit" | null>(null);
 
+  // Geopend via een directe link: werk dan verder in de organisatie van dit overleg.
+  const { ensureOrg } = useAuth();
+  const organisationId = data?.overleg.organisationId;
+  useEffect(() => {
+    if (organisationId) ensureOrg(organisationId);
+  }, [organisationId, ensureOrg]);
+
   const canEdit = data?.role === "secretaris";
   const now = Date.now() - 3 * 3600_000;
   const upcoming = (data?.meetings ?? []).filter((m) => new Date(m.startsAt).getTime() >= now).reverse();
@@ -273,7 +277,6 @@ export default function OverlegPage() {
               <div>
                 <div className="crumb">
                   <Link to="/overleggen">Overleggen</Link>
-                  {data.overleg.organisation && ` › ${data.overleg.organisation}`}
                 </div>
                 <h1>{data.overleg.name}</h1>
                 {data.overleg.description && <p className="lead pre">{data.overleg.description}</p>}

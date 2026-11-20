@@ -12,14 +12,32 @@ import { q, q1 } from "../db";
 import { bad, email, env, HttpError, notFound, optStr, str } from "../http";
 import { route } from "../router";
 
+/** Organisaties waar de gebruiker bij mag: als beheerder, of via deelname aan een overleg. */
+function myOrganisations(userId: string) {
+  return q(
+    `SELECT org.id, org.name, CASE WHEN adm.is_admin THEN 'beheerder' ELSE 'lid' END AS role
+       FROM organisations org
+       CROSS JOIN LATERAL (
+         SELECT EXISTS (SELECT 1 FROM organisation_admins a WHERE a.organisation_id = org.id AND a.user_id = $1) AS is_admin
+       ) adm
+      WHERE NOT org.archived
+        AND (adm.is_admin OR EXISTS (
+              SELECT 1 FROM memberships m JOIN overleggen o ON o.id = m.overleg_id
+               WHERE o.organisation_id = org.id AND m.user_id = $1))
+      ORDER BY lower(org.name)`,
+    [userId],
+  );
+}
+
 route.get(
   "/api/session",
   async (c) => {
-    const [org, anyUser] = await Promise.all([
+    const [org, anyUser, organisations] = await Promise.all([
       q1<{ value: string }>(`SELECT value FROM settings WHERE key = 'orgName'`),
       c.user ? null : q1(`SELECT 1 AS x FROM users LIMIT 1`),
+      c.user ? myOrganisations(c.user.id) : [],
     ]);
-    return { user: c.user ?? null, orgName: org?.value ?? "", setupNeeded: !c.user && !anyUser };
+    return { user: c.user ?? null, orgName: org?.value ?? "", setupNeeded: !c.user && !anyUser, organisations };
   },
   { public: true },
 );
@@ -35,7 +53,7 @@ route.post(
     }
     const name = str(b.name, "Naam", { max: 120 });
     const mail = email(b.email);
-    const orgName = optStr(b.orgName, "Naam organisatie", 120);
+    const organisation = optStr(b.organisation, "Naam organisatie", 120);
     const hash = await hashPassword(checkNewPassword(b.password));
     const id = randomUUID();
     const created = await q1(
@@ -45,8 +63,11 @@ route.post(
       [id, mail, name, hash],
     );
     if (!created) throw new HttpError(409, "Het platform is al ingericht. Log in met je account.");
-    if (orgName) {
-      await q(`INSERT INTO settings (key, value) VALUES ('orgName', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [orgName]);
+    if (organisation) {
+      // De eerste organisatie, met de nieuwe beheerder als beheerder: direct een werkende omgeving.
+      const orgId = randomUUID();
+      await q(`INSERT INTO organisations (id, name) VALUES ($1, $2)`, [orgId, organisation]);
+      await q(`INSERT INTO organisation_admins (organisation_id, user_id) VALUES ($1, $2)`, [orgId, id]);
     }
     c.setSession(await createSession(id));
     return { user: { id, email: mail, name, isAdmin: true } };

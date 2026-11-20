@@ -110,7 +110,7 @@ export function SetupPage() {
         submitLabel="Account aanmaken"
         onSubmit={async () => {
           checkSame(pw);
-          await api("/api/setup", { method: "POST", body: { code, name, email, orgName, password: pw[0] } });
+          await api("/api/setup", { method: "POST", body: { code, name, email, organisation: orgName, password: pw[0] } });
           await refresh();
           navigate("/", { replace: true });
         }}
@@ -120,9 +120,6 @@ export function SetupPage() {
             <input className="input" required value={code} onChange={(e) => setCode(e.target.value)} />
           </Field>
         )}
-        <Field label="Naam onder de titel (optioneel)" hint="Bijvoorbeeld je eigen naam. Bij welke organisatie een overleg hoort, stel je per overleg in.">
-          <input className="input" maxLength={120} autoComplete="organization" value={orgName} onChange={(e) => setOrgName(e.target.value)} />
-        </Field>
         <Field label="Je naam">
           <input className="input" required autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
@@ -130,6 +127,12 @@ export function SetupPage() {
           <input className="input" type="email" required autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} />
         </Field>
         <PasswordFields value={pw} onChange={setPw} />
+        <Field
+          label="Naam van je eerste organisatie"
+          hint="Bijvoorbeeld de commissie, de school of het bedrijf waarvoor je vergadert. Meer organisaties voeg je later toe; elke organisatie is een eigen omgeving."
+        >
+          <input className="input" required maxLength={120} autoComplete="organization" value={orgName} onChange={(e) => setOrgName(e.target.value)} />
+        </Field>
       </Form>
     </AuthShell>
   );

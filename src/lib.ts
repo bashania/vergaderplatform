@@ -1,12 +1,13 @@
 export type User = { id: string; email: string; name: string; isAdmin: boolean };
 export type Role = "secretaris" | "deelnemer";
+/** Een organisatie is een eigen omgeving; "beheerder" beheert die hele omgeving. */
+export type Organisation = { id: string; name: string; role: "beheerder" | "lid" };
 export type MeetingStatus = "concept" | "gepubliceerd" | "afgerond";
 export type Kind = "informatie" | "bespreking" | "besluit";
 
 export type Overleg = {
   id: string;
   name: string;
-  organisation: string;
   description: string;
   archived: boolean;
   role: Role;
@@ -27,7 +28,6 @@ export type MeetingSummary = {
   decisionCount?: number;
   overlegId?: string;
   overlegName?: string;
-  organisation?: string;
   myAttendance?: "aanwezig" | "afwezig" | null;
 };
 
@@ -100,7 +100,8 @@ export type Meeting = {
   id: string;
   overlegId: string;
   overlegName: string;
-  organisation: string;
+  organisationId: string;
+  organisationName: string;
   title: string;
   startsAt: string;
   durationMin: number;

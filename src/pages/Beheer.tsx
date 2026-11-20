@@ -3,8 +3,8 @@ import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth, useUser } from "../auth";
 import { LinkModal, type LinkInfo } from "../components/LinkModal";
-import { fmtDateTime, type Overleg, type Role } from "../lib";
-import { Button, Empty, Field, Form, Loader, Modal, useLoad, useRun } from "../ui";
+import { fmtDateTime } from "../lib";
+import { Button, Empty, Field, Form, Loader, Modal, useLoad, useRun, useToast } from "../ui";
 
 type AdminUser = {
   id: string;
@@ -15,30 +15,213 @@ type AdminUser = {
   createdAt: string;
   lastLoginAt: string | null;
   hasPassword: boolean;
-  memberships: { overlegId: string; overlegName: string; role: Role }[];
+  organisations: string[];
 };
 
+type AdminOrganisation = {
+  id: string;
+  name: string;
+  archived: boolean;
+  overlegCount: number;
+  admins: { id: string; name: string; email: string }[];
+};
+
+type Added = { name: string; email: string; created: boolean } & Partial<LinkInfo>;
+
 const TABS = [
-  ["gebruikers", "Gebruikers"],
+  ["organisaties", "Organisaties"],
+  ["gebruikers", "Accounts"],
   ["instellingen", "Instellingen"],
   ["logboek", "Logboek"],
 ] as const;
 
-function NewUser({ overleggen, onClose, onCreated }: { overleggen: Overleg[]; onClose: () => void; onCreated: (link: LinkInfo) => void }) {
+// ---------- organisaties ----------
+
+function NewOrganisation({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
+  const [name, setName] = useState("");
+  return (
+    <Modal title="Nieuwe organisatie" onClose={onClose}>
+      <Form
+        submitLabel="Aanmaken"
+        onCancel={onClose}
+        onSubmit={async () => {
+          const { id } = await api<{ id: string }>("/api/organisations", { method: "POST", body: { name } });
+          onCreated(id);
+        }}
+      >
+        <Field label="Naam" hint="Bijvoorbeeld de commissie, de school of het bedrijf. Elke organisatie is een eigen omgeving: deelnemers zien alleen hun eigen organisatie.">
+          <input className="input" required autoFocus maxLength={120} value={name} onChange={(e) => setName(e.target.value)} />
+        </Field>
+        <p className="small muted">
+          Je wordt zelf beheerder van de nieuwe organisatie, zodat je haar kunt inrichten. Overdragen kan daarna: voeg een andere beheerder toe en haal jezelf weg.
+        </p>
+      </Form>
+    </Modal>
+  );
+}
+
+function ManageOrganisation({ org, onClose, onChanged }: { org: AdminOrganisation; onClose: () => void; onChanged: () => void }) {
+  const run = useRun();
+  const toast = useToast();
+  const { refresh } = useAuth();
+  const base = `/api/organisations/${org.id}`;
+  const [name, setName] = useState(org.name);
+  const [archived, setArchived] = useState(org.archived);
+  const [email, setEmail] = useState("");
+  const [personName, setPersonName] = useState("");
+  const [link, setLink] = useState<LinkInfo | null>(null);
+
+  const changed = async () => {
+    await refresh();
+    onChanged();
+  };
+
+  if (link) return <LinkModal link={link} onClose={() => setLink(null)} />;
+  return (
+    <Modal title={org.name} onClose={onClose}>
+      <div className="stack" style={{ gap: 24 }}>
+        <Form
+          onSubmit={async () => {
+            await api(base, { method: "PATCH", body: { name, archived } });
+            await changed();
+            toast("Organisatie opgeslagen");
+          }}
+        >
+          <Field label="Naam">
+            <input className="input" required maxLength={120} value={name} onChange={(e) => setName(e.target.value)} />
+          </Field>
+          <label className="check">
+            <input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} />
+            Gearchiveerd (verdwijnt uit de organisatiekiezer, gegevens blijven bewaard)
+          </label>
+        </Form>
+
+        <div className="stack">
+          <h3>Beheerders</h3>
+          {org.admins.map((a) => (
+            <div className="spread" key={a.id}>
+              <span>
+                {a.name} <span className="muted small">({a.email})</span>
+              </span>
+              <Button
+                small
+                variant="danger"
+                disabled={org.admins.length === 1}
+                title={org.admins.length === 1 ? "Voeg eerst een andere beheerder toe" : undefined}
+                onClick={async () => {
+                  if (!window.confirm(`${a.name} is daarna geen beheerder meer van ${org.name}.`)) return;
+                  if (await run(() => api(`${base}/admins/${a.id}`, { method: "DELETE" }), "Beheerder verwijderd")) await changed();
+                }}
+              >
+                Verwijderen
+              </Button>
+            </div>
+          ))}
+          <Form
+            submitLabel="Beheerder toevoegen"
+            onSubmit={async () => {
+              const res = await api<Added>(`${base}/admins`, { method: "POST", body: { email, name: personName } });
+              setEmail("");
+              setPersonName("");
+              await changed();
+              if (res.created && res.token) setLink(res as LinkInfo);
+              else toast(`${res.name} is nu beheerder van ${org.name}`);
+            }}
+          >
+            <div className="form-row">
+              <Field label="E-mailadres">
+                <input className="input" type="email" required maxLength={200} value={email} onChange={(e) => setEmail(e.target.value)} />
+              </Field>
+              <Field label="Naam" hint="Alleen bij een nieuw account.">
+                <input className="input" maxLength={120} value={personName} onChange={(e) => setPersonName(e.target.value)} />
+              </Field>
+            </div>
+          </Form>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function Organisations() {
+  const { refresh, selectOrg } = useAuth();
+  const toast = useToast();
+  const { data, loading, error, reload } = useLoad<{ organisations: AdminOrganisation[] }>("/api/organisations");
+  const [creating, setCreating] = useState(false);
+  const [managing, setManaging] = useState<string | null>(null);
+  const list = data?.organisations ?? [];
+  const managed = list.find((o) => o.id === managing);
+
+  return (
+    <section className="card">
+      <div className="card-head">
+        <h2 className="section-title">Organisaties</h2>
+        <Button icon="plus" onClick={() => setCreating(true)}>
+          Nieuwe organisatie
+        </Button>
+      </div>
+      <Loader loading={loading} error={error}>
+        {list.length ? (
+          <ul className="list">
+            {list.map((o) => (
+              <li key={o.id} style={{ alignItems: "center" }}>
+                <div className="grow">
+                  <div className="row">
+                    <strong>{o.name}</strong>
+                    {o.archived && <span className="badge">Gearchiveerd</span>}
+                  </div>
+                  <div className="meta">
+                    <span>
+                      {o.overlegCount} {o.overlegCount === 1 ? "overleg" : "overleggen"}
+                    </span>
+                    <span>Beheer: {o.admins.map((a) => a.name).join(", ") || "niemand"}</span>
+                  </div>
+                </div>
+                <Button variant="secondary" small icon="edit" onClick={() => setManaging(o.id)}>
+                  Beheren
+                </Button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <Empty title="Nog geen organisaties">Maak de eerste aan. Elke organisatie krijgt eigen overleggen, deelnemers en beheerders.</Empty>
+        )}
+        <div className="card-body" style={{ borderTop: "1px solid var(--line)" }}>
+          <p className="small muted">
+            Als platformbeheerder maak je organisaties aan en wijs je beheerders aan. De overleggen en stukken van een organisatie zie je alleen als je er zelf beheerder
+            of deelnemer van bent.
+          </p>
+        </div>
+      </Loader>
+      {creating && (
+        <NewOrganisation
+          onClose={() => setCreating(false)}
+          onCreated={async (id) => {
+            setCreating(false);
+            await refresh();
+            selectOrg(id);
+            void reload();
+            toast("Organisatie aangemaakt. Je werkt nu in deze organisatie.");
+          }}
+        />
+      )}
+      {managed && <ManageOrganisation key={managed.id + managed.admins.length} org={managed} onClose={() => setManaging(null)} onChanged={reload} />}
+    </section>
+  );
+}
+
+// ---------- accounts ----------
+
+function NewAdmin({ onClose, onCreated }: { onClose: () => void; onCreated: (link: LinkInfo) => void }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [roles, setRoles] = useState<Record<string, Role | "">>({});
   return (
-    <Modal title="Nieuwe gebruiker" onClose={onClose}>
+    <Modal title="Platformbeheerder toevoegen" onClose={onClose}>
       <Form
         submitLabel="Aanmaken en link tonen"
         onCancel={onClose}
         onSubmit={async () => {
-          const memberships = Object.entries(roles)
-            .filter(([, role]) => role)
-            .map(([overlegId, role]) => ({ overlegId, role }));
-          const res = await api<Omit<LinkInfo, "name" | "email">>("/api/users", { method: "POST", body: { name, email, isAdmin, memberships } });
+          const res = await api<Omit<LinkInfo, "name" | "email">>("/api/users", { method: "POST", body: { name, email, isAdmin: true } });
           onCreated({ ...res, name, email });
         }}
       >
@@ -50,31 +233,9 @@ function NewUser({ overleggen, onClose, onCreated }: { overleggen: Overleg[]; on
             <input className="input" type="email" required maxLength={200} value={email} onChange={(e) => setEmail(e.target.value)} />
           </Field>
         </div>
-        {overleggen.length > 0 && (
-          <div className="field">
-            <span>Neemt deel aan</span>
-            {overleggen.map((o) => (
-              <div className="spread" key={o.id}>
-                <span>{o.name}</span>
-                <select
-                  className="input"
-                  style={{ width: "auto" }}
-                  aria-label={`Rol in ${o.name}`}
-                  value={roles[o.id] ?? ""}
-                  onChange={(e) => setRoles({ ...roles, [o.id]: e.target.value as Role | "" })}
-                >
-                  <option value="">Geen deelnemer</option>
-                  <option value="deelnemer">Deelnemer</option>
-                  <option value="secretaris">Secretaris</option>
-                </select>
-              </div>
-            ))}
-          </div>
-        )}
-        <label className="check">
-          <input type="checkbox" checked={isAdmin} onChange={(e) => setIsAdmin(e.target.checked)} />
-          Beheerder (ziet alle overleggen en beheert gebruikers)
-        </label>
+        <p className="small muted">
+          Een platformbeheerder maakt organisaties aan, blokkeert accounts en maakt resetlinks. Deelnemers voeg je niet hier toe, maar bij het overleg zelf.
+        </p>
       </Form>
     </Modal>
   );
@@ -112,11 +273,11 @@ function EditUser({ target, onClose, onSaved }: { target: AdminUser; onClose: ()
           <>
             <label className="check">
               <input type="checkbox" checked={isAdmin} onChange={(e) => setIsAdmin(e.target.checked)} />
-              Beheerder
+              Platformbeheerder
             </label>
             <label className="check">
               <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
-              Account actief (uitvinken blokkeert de toegang direct)
+              Account actief (uitvinken blokkeert de toegang tot alle organisaties direct)
             </label>
           </>
         )}
@@ -128,7 +289,6 @@ function EditUser({ target, onClose, onSaved }: { target: AdminUser; onClose: ()
 function Users() {
   const run = useRun();
   const { data, loading, error, reload } = useLoad<{ users: AdminUser[] }>("/api/users");
-  const overleggen = useLoad<{ overleggen: Overleg[] }>("/api/overleggen");
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<AdminUser | null>(null);
   const [link, setLink] = useState<LinkInfo | null>(null);
@@ -143,9 +303,9 @@ function Users() {
   return (
     <section className="card">
       <div className="card-head">
-        <h2 className="section-title">Gebruikers</h2>
-        <Button icon="plus" onClick={() => setCreating(true)}>
-          Nieuwe gebruiker
+        <h2 className="section-title">Accounts</h2>
+        <Button variant="secondary" icon="plus" onClick={() => setCreating(true)}>
+          Platformbeheerder toevoegen
         </Button>
       </div>
       <Loader loading={loading} error={error}>
@@ -155,7 +315,7 @@ function Users() {
               <tr>
                 <th>Naam</th>
                 <th>Status</th>
-                <th>Overleggen</th>
+                <th>Organisaties</th>
                 <th>Laatst ingelogd</th>
                 <th />
               </tr>
@@ -176,19 +336,10 @@ function Users() {
                       ) : (
                         <span className="badge warm">Uitgenodigd</span>
                       )}
-                      {u.isAdmin && <span className="badge info">Beheerder</span>}
+                      {u.isAdmin && <span className="badge info">Platformbeheerder</span>}
                     </div>
                   </td>
-                  <td className="small">
-                    {u.memberships.length
-                      ? u.memberships.map((m) => (
-                          <div key={m.overlegId}>
-                            <Link to={`/overleggen/${m.overlegId}?tab=leden`}>{m.overlegName}</Link>
-                            {m.role === "secretaris" ? " (secretaris)" : ""}
-                          </div>
-                        ))
-                      : "Geen"}
-                  </td>
+                  <td className="small">{u.organisations.length ? u.organisations.map((o) => <div key={o}>{o}</div>) : "Geen"}</td>
                   <td className="small nowrap">{u.lastLoginAt ? fmtDateTime(u.lastLoginAt) : "Nog nooit"}</td>
                   <td>
                     <div className="row" style={{ gap: 2, flexWrap: "nowrap", justifyContent: "flex-end" }}>
@@ -207,8 +358,7 @@ function Users() {
         </div>
       </Loader>
       {creating && (
-        <NewUser
-          overleggen={(overleggen.data?.overleggen ?? []).filter((o) => !o.archived)}
+        <NewAdmin
           onClose={() => setCreating(false)}
           onCreated={(l) => {
             setCreating(false);
@@ -232,11 +382,14 @@ function Users() {
   );
 }
 
+// ---------- instellingen en logboek ----------
+
 type Diagnostics = { functionRegion: string; dbHost: string; dbRoundTripMs: number; dbVersion: string; blobRegion: string };
 
 function Settings() {
   const { orgName, refresh } = useAuth();
   const run = useRun();
+  const toast = useToast();
   const [name, setName] = useState(orgName);
   const [diag, setDiag] = useState<Diagnostics | null>(null);
   return (
@@ -250,12 +403,10 @@ function Settings() {
             onSubmit={async () => {
               await api("/api/settings", { method: "PUT", body: { orgName: name } });
               await refresh();
+              toast("Opgeslagen");
             }}
           >
-            <Field
-              label="Naam onder de titel (optioneel)"
-              hint="Staat in het menu en op het inlogscherm, bijvoorbeeld je eigen naam. Bij welke organisatie een overleg hoort, stel je per overleg in."
-            >
+            <Field label="Naam onder de titel (optioneel)" hint="Staat in het menu en op het inlogscherm, voor iedereen. Laat leeg als het platform voor meerdere organisaties is.">
               <input className="input" maxLength={120} value={name} onChange={(e) => setName(e.target.value)} />
             </Field>
           </Form>
@@ -302,18 +453,27 @@ function Settings() {
 }
 
 const ACTION_LABEL: Record<string, string> = {
-  "POST /api/users": "Gebruiker aangemaakt",
-  "PATCH /api/users/:id": "Gebruiker gewijzigd",
+  "POST /api/users": "Account aangemaakt",
+  "PATCH /api/users/:id": "Account gewijzigd",
   "POST /api/users/:id/token": "Uitnodigings- of resetlink gemaakt",
   "PUT /api/settings": "Instellingen gewijzigd",
+  "POST /api/organisations": "Organisatie aangemaakt",
+  "PATCH /api/organisations/:id": "Organisatie gewijzigd",
+  "POST /api/organisations/:id/admins": "Beheerder van organisatie toegevoegd",
+  "DELETE /api/organisations/:id/admins/:userId": "Beheerder van organisatie verwijderd",
+  "DELETE /api/organisations/:id/people/:userId": "Toegang tot organisatie ingetrokken",
+  "POST /api/organisations/:id/people/:userId/invite": "Uitnodigingslink gemaakt",
   "POST /api/overleggen": "Overleg aangemaakt",
   "PATCH /api/overleggen/:id": "Overleg gewijzigd",
-  "PUT /api/overleggen/:id/members/:userId": "Deelnemer toegevoegd of rol gewijzigd",
+  "POST /api/overleggen/:id/members": "Deelnemer toegevoegd",
+  "POST /api/overleggen/:id/members/:userId/invite": "Uitnodigingslink gemaakt",
+  "PUT /api/overleggen/:id/members/:userId": "Rol van deelnemer gewijzigd",
   "DELETE /api/overleggen/:id/members/:userId": "Deelnemer verwijderd",
   "POST /api/overleggen/:id/meetings": "Vergadering aangemaakt",
   "PATCH /api/meetings/:id": "Vergadering gewijzigd",
   "DELETE /api/meetings/:id": "Vergadering verwijderd",
   "POST /api/meetings/:id/items": "Agendapunt toegevoegd",
+  "POST /api/meetings/:id/items/bulk": "Agenda geplakt",
   "PATCH /api/items/:id": "Agendapunt of notulen gewijzigd",
   "DELETE /api/items/:id": "Agendapunt verwijderd",
   "PUT /api/meetings/:id/order": "Volgorde agenda gewijzigd",
@@ -338,7 +498,7 @@ function AuditLog() {
     <section className="card">
       <div className="card-head">
         <h2 className="section-title">Logboek</h2>
-        <span className="muted small">Laatste 200 wijzigingen</span>
+        <span className="muted small">Laatste 200 wijzigingen, zonder inhoud</span>
       </div>
       <Loader loading={loading} error={error}>
         {data?.entries.length ? (
@@ -372,22 +532,23 @@ function AuditLog() {
 
 export default function BeheerPage() {
   const [sp] = useSearchParams();
-  const tab = TABS.some(([key]) => key === sp.get("tab")) ? sp.get("tab")! : "gebruikers";
+  const tab = TABS.some(([key]) => key === sp.get("tab")) ? sp.get("tab")! : "organisaties";
   return (
     <div className="page">
       <div className="page-head">
         <div>
-          <h1>Beheer</h1>
-          <p className="lead">Accounts aanmaken, toegang intrekken en nagaan wie wat heeft gewijzigd.</p>
+          <h1>Platformbeheer</h1>
+          <p className="lead">Organisaties aanmaken, accounts blokkeren of herstellen, en nagaan wie wat heeft gewijzigd.</p>
         </div>
       </div>
-      <nav className="tabs" aria-label="Onderdelen van beheer">
+      <nav className="tabs" aria-label="Onderdelen van platformbeheer">
         {TABS.map(([key, label]) => (
           <Link key={key} to={`?tab=${key}`} replace className={tab === key ? "active" : ""} aria-current={tab === key ? "page" : undefined}>
             {label}
           </Link>
         ))}
       </nav>
+      {tab === "organisaties" && <Organisations />}
       {tab === "gebruikers" && <Users />}
       {tab === "instellingen" && <Settings />}
       {tab === "logboek" && <AuditLog />}
