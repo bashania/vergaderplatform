@@ -1,8 +1,50 @@
 import { randomUUID } from "node:crypto";
 import { createUserToken } from "../auth";
 import { dbHost, q, q1 } from "../db";
-import { bad, email, env, forbidden, HttpError, notFound, oneOf, str, uuid } from "../http";
+import { bad, email, env, forbidden, HttpError, json, notFound, oneOf, str, uuid } from "../http";
+import { store } from "../files";
 import { route } from "../router";
+
+/**
+ * Alleen-lezen controle voor bewaking en na een deploy: werkt de database (inclusief
+ * de datatypes die de app gebruikt) en is de opslag van stukken bereikbaar?
+ * Schrijft niets en geeft geen gegevens prijs.
+ */
+route.get(
+  "/api/health",
+  async () => {
+    const ids = [randomUUID(), randomUUID()];
+    let dbOk = false;
+    let blobsOk = false;
+    try {
+      const row = await q1(
+        `SELECT $1::uuid[] AS ids, $2::jsonb AS doc, $3::int + 1 AS n, $4::boolean AS flag,
+                '2026-01-31'::date::text AS day, now() AS at,
+                (SELECT count(*)::int FROM users) >= 0 AS has_schema`,
+        [ids, JSON.stringify({ a: 1 }), 41, true],
+      );
+      dbOk =
+        Array.isArray(row?.ids) &&
+        row.ids.join() === ids.join() &&
+        row.doc?.a === 1 &&
+        row.n === 42 &&
+        row.flag === true &&
+        row.day === "2026-01-31" &&
+        !Number.isNaN(new Date(row.at).getTime()) &&
+        row.hasSchema === true;
+    } catch (e) {
+      console.error("health db", e);
+    }
+    try {
+      blobsOk = (await store().get("health-check")) === null;
+    } catch (e) {
+      console.error("health blobs", e);
+    }
+    const body = { db: dbOk ? "ok" : "fout", blobs: blobsOk ? "ok" : "fout" };
+    return dbOk && blobsOk ? body : json(body, 503);
+  },
+  { public: true },
+);
 
 const ROLES = ["secretaris", "deelnemer"] as const;
 

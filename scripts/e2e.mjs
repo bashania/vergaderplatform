@@ -340,6 +340,15 @@ step("7. Zoeken, dashboard, beheer");
   check("onbekende route 404", (await admin.get("/api/bestaat-niet")).status === 404);
 }
 
+if (process.env.CLEANUP === "1") {
+  step("8. Opruimen: stukken van deze testrun verwijderen");
+  const m = await admin.get(`/api/meetings/${meetingId}`);
+  const o = await admin.get(`/api/overleggen/${overlegId}`);
+  const docs = [...(m.data?.documents ?? []), ...(o.data?.documents ?? [])];
+  for (const d of docs) check(`stuk ${d.name} verwijderd`, (await admin.del(`/api/documents/${d.id}`)).status === 200);
+  console.log(`  ${docs.length} stukken verwijderd`);
+}
+
 console.log(`\n${passed} controles geslaagd, ${failures.length} mislukt`);
 if (failures.length) {
   console.log(failures.map((f) => ` - ${f}`).join("\n"));
