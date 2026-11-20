@@ -9,10 +9,14 @@ import "../../server/routes/meetings";
 import "../../server/routes/records";
 import "../../server/routes/documents";
 import "../../server/routes/ai";
+import "../../server/routes/plaud";
+import "../../server/routes/transcripts";
 
 // Eén functie voor de hele API: gedeelde code, één koude start.
 export default (req: Request, context: Context) => handle(req, context);
 
 export const config: Config = {
   path: "/api/*",
+  // Langlopend werk gaat naar de achtergrondfunctie (api-background.mts).
+  excludedPath: "/api/background/*",
 };

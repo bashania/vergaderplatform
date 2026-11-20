@@ -43,6 +43,20 @@ export function fakeProposals(items: Item[], members: Member[], meetingDate: str
   return JSON.stringify({ decisions, actions });
 }
 
+/** Concept-notulen: per agendapunt de regels uit het transcript waarin het onderwerp wordt genoemd. */
+export function fakeNotes(items: { key: string; title: string }[], transcript: string): string {
+  const preset = env("AI_FAKE_NOTES");
+  if (preset) return preset;
+  const lines = transcript.split("\n").map((l) => l.replace(/^\[[^\]]*\]\s*/, "").trim());
+  const out: { item: string; notes: string }[] = [];
+  for (const it of items) {
+    const word = it.title.split(/\s+/).find((w) => w.length > 4)?.toLowerCase();
+    const hits = word ? lines.filter((l) => l.toLowerCase().includes(word)).slice(0, 3) : [];
+    if (hits.length) out.push({ item: it.key, notes: `Besproken: ${hits.join(" ")}` });
+  }
+  return JSON.stringify({ items: out, general: "" });
+}
+
 export function fakeSummary(name: string): string {
   return (
     env("AI_FAKE_SUMMARY")?.replace(/\\n/g, "\n") ??

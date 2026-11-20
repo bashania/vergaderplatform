@@ -1372,6 +1372,18 @@ dialog.modal::backdrop {
   flex-wrap: wrap;
 }
 
+/* ---------- transcript ---------- */
+.transcript-text {
+  max-height: 62vh;
+  overflow-y: auto;
+  padding-right: 6px;
+  font-size: 0.93rem;
+  line-height: 1.55;
+}
+.doc .ext {
+  white-space: nowrap;
+}
+
 /* ---------- AI-assistent ---------- */
 .ai-wait {
   display: flex;

@@ -17,6 +17,7 @@ Agenda's, stukken, besluiten en acties op één plek, zodat alle deelnemers alti
 - **Vergadermodus**: tijdens het overleg één scherm met het actuele agendapunt, de stukken, de klok (besteed tegenover gepland) en de notulen, die vanzelf worden opgeslagen. Deelnemers die het scherm openen, lopen zonder verversen mee met de secretaris. De bestede tijd per punt komt in het verslag.
 - **AI-assistent** (per organisatie aan te zetten): vat een pdf of tekstbestand samen ter voorbereiding en stelt na afloop besluiten en acties voor uit de notulen. De assistent legt zelf niets vast; de secretaris neemt een voorstel over of niet.
 - **Installeerbaar**: op telefoon, tablet of computer als app op het beginscherm te zetten.
+- **Transcript en Plaud**: de secretaris zet het transcript van de opname bij de vergadering, opgehaald uit Plaud of geplakt als tekst (ook uit Teams of Zoom). De AI-assistent maakt er concept-notulen per agendapunt van; de secretaris loopt ze na en neemt ze over.
 
 ## Rollen
 
@@ -62,6 +63,14 @@ De gekozen organisatie gaat mee in de header `x-organisation` en bepaalt wat de 
 - Eén verzoek moet binnen 60 seconden klaar zijn (limiet van Netlify Functions). Duurt het langer, dan krijgt de gebruiker een melding.
 - Controleren of de koppeling werkt: Platformbeheer, Instellingen, AI-assistent, knop "Test de koppeling".
 
+### Transcript en koppeling met Plaud
+
+- **Koppelen** doet elke gebruiker zelf onder Mijn account. Het platform sluit aan op de officiële MCP-server van Plaud (`mcp.plaud.ai`) met de inlogstandaard van MCP: OAuth met PKCE, waarbij het platform zich per webadres één keer als toepassing aanmeldt. Plaud documenteert deze route voor MCP-clients, niet uitdrukkelijk voor webtoepassingen; wijzigt Plaud iets, dan is plakken als tekst de uitwijk.
+- **Sleutels** geven leestoegang tot alle opnames van de gebruiker. Ze staan versleuteld in de database (AES-256-GCM, sleutel in `TOKEN_KEY`) en verlaten de server niet. Het platform leest alleen: de lijst met opnames en het transcript dat de gebruiker kiest (`server/plaud.ts`).
+- **Het transcript** is een woordelijk verslag en daarom alleen zichtbaar voor de secretaris en de beheerder. Het is bedoeld om te verwijderen zodra de notulen zijn vastgesteld; dat kan ook na afronden.
+- **Concept-notulen** maken duurt langer dan een gewoon verzoek mag duren. Het werk loopt daarom in een achtergrondfunctie (`netlify/functions/api-background.mts`, tot 15 minuten); het scherm vraagt de stand op (`ai_jobs`).
+- **Waar de gegevens langs gaan**: de opname en het transcript staan bij Plaud; het ophalen loopt via Plaud's MCP-server in de VS; het maken van concept-notulen stuurt het transcript naar het taalmodel (zie AI-assistent). Informeer deelnemers vooraf dat de vergadering wordt opgenomen.
+
 Het platform verstuurt zelf geen e-mail. Uitnodigingslinks kopieert of mailt de secretaris of beheerder zelf; resetlinks (wachtwoord vergeten) maakt alleen de platformbeheerder.
 
 ## Lokaal draaien
@@ -71,7 +80,7 @@ npm install
 ```
 
 ```bash
-printf "SETUP_CODE=lokale-testcode\nAI_FAKE=1\n" > .env
+printf "SETUP_CODE=lokale-testcode\nAI_FAKE=1\nTOKEN_KEY=lokale-sleutel\nPLAUD_MCP_URL=http://localhost:8899/mcp\n" > .env
 ```
 
 ```bash
@@ -88,6 +97,8 @@ Open daarna http://localhost:8888/#lokale-testcode om het eerste beheerdersaccou
 
 `AI_FAKE=1` werkt alleen lokaal: de AI-assistent geeft dan vaste antwoorden (`server/ai-fake.ts`) in plaats van een taalmodel aan te roepen. Zo draaien de schermen en de tests zonder gateway.
 
+`PLAUD_MCP_URL` werkt ook alleen lokaal en wijst naar een nagebouwde Plaud-server (`scripts/fake-plaud.mjs`). Die doet het inloggen, het verversen van sleutels en het leveren van opnames en transcripten na in het formaat van Plaud. De test start hem zelf; om de schermen met de hand te proberen: `node scripts/fake-plaud.mjs`.
+
 ## Testen
 
 Met de lokale server aan en een lege database:
@@ -96,7 +107,7 @@ Met de lokale server aan en een lege database:
 npm run test:e2e
 ```
 
-De test doorloopt ook de passkeys, met een software-authenticator (`scripts/soft-authenticator.mjs`) die doet wat een telefoon of laptop doet.
+De test doorloopt ook de passkeys, met een software-authenticator (`scripts/soft-authenticator.mjs`) die doet wat een telefoon of laptop doet, en de koppeling met Plaud tegen de nagebouwde server (poort 8899 moet vrij zijn).
 
 De herkenning van geplakte agenda's:
 
@@ -122,6 +133,7 @@ De samenvatting en de voorstellen in de film komen uit de lokale testmodus, niet
 | `SETUP_CODE` | Eenmalige code waarmee de eerste platformbeheerder zijn account aanmaakt. Daarna zonder functie; verwijder de variabele na de inrichting. |
 | `RP_ID` | Domein waaraan passkeys worden gebonden. Standaard de hostnaam van de site. Alleen zetten bij een eigen domein, en vóórdat er passkeys zijn aangemaakt. |
 | `BLOB_REGION` | Regio van de stukken (standaard `eu-central-1`). Niet wijzigen na ingebruikname: bestaande stukken verhuizen niet mee. |
+| `TOKEN_KEY` | Geheime sleutel waarmee de toegang tot Plaud versleuteld wordt opgeslagen. Zonder deze variabele is de koppeling met Plaud uitgeschakeld. Wijzigen maakt bestaande koppelingen ongeldig: gebruikers koppelen dan opnieuw. |
 | `AI_MODEL` | Model van de AI-assistent (standaard `claude-opus-5-5`). Alleen een actueel Claude-model dat Netlify AI Gateway aanbiedt. |
 
 ## Schemawijzigingen

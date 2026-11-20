@@ -1,6 +1,7 @@
 // End-to-end test van de API. Draait tegen een lege (of eerder door dit script gevulde) database.
 //   BASE=http://localhost:8888 SETUP_CODE=lokale-testcode node scripts/e2e.mjs
 import { createHash, randomBytes } from "node:crypto";
+import { startFakePlaud } from "./fake-plaud.mjs";
 import { SoftAuthenticator } from "./soft-authenticator.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:8888";
@@ -657,11 +658,110 @@ step("5b. Vergadermodus en AI-assistent");
   check("nieuwe samenvatting dan niet meer", !!zip && (await admin.post(`/api/documents/${zip.id}/ai/summary`)).status === 403);
 }
 
+step("5c. Transcript, koppeling met Plaud en concept-notulen");
+{
+  // Nagebouwde Plaud-server; de lokale server wijst ernaar met PLAUD_MCP_URL (zie README).
+  const plaud = await startFakePlaud(8899);
+  const tPath = `/api/meetings/${meetingId}/transcript`;
+  const today = new Date().toISOString().slice(0, 10);
+
+  const status0 = await admin.get("/api/plaud");
+  check("Plaud beschikbaar, nog niet gekoppeld", status0.status === 200 && status0.data.available === true && status0.data.connected === false, JSON.stringify(status0.data));
+  check("zonder koppeling geen opnames", (await admin.get(`/api/plaud/recordings?from=${today}&to=${today}`)).status === 409);
+
+  /** Doorloopt het inloggen bij (de nagebouwde) Plaud en geeft het pad van de terugkeer naar het platform. */
+  async function consent(client) {
+    const start = await client.post("/api/plaud/connect");
+    if (start.status !== 200) return { start };
+    const authorize = new URL(start.data.url);
+    const atPlaud = await fetch(authorize, { redirect: "manual" });
+    const back = new URL(atPlaud.headers.get("location"));
+    return { start, authorize, callback: back.pathname + back.search };
+  }
+  const first = await consent(admin);
+  check(
+    "koppelen start met PKCE en een eigen terugkeeradres",
+    first.start.status === 200 &&
+      first.authorize.searchParams.get("code_challenge_method") === "S256" &&
+      first.authorize.searchParams.get("redirect_uri") === `${BASE}/api/plaud/callback` &&
+      first.authorize.searchParams.get("resource") === plaud.url,
+    JSON.stringify(first.start.data),
+  );
+  const stolen = await dee.client.raw("GET", first.callback);
+  check("terugkeer door een andere gebruiker wordt geweigerd", stolen.status === 302 && stolen.headers.get("location") === "/account?plaud=mislukt");
+  const done = await admin.raw("GET", first.callback);
+  check("terugkeer rondt de koppeling af", done.status === 302 && done.headers.get("location") === "/account?plaud=gekoppeld", done.headers.get("location") ?? "");
+  const replay = await admin.raw("GET", first.callback);
+  check("dezelfde terugkeer werkt maar één keer", replay.headers.get("location") === "/account?plaud=mislukt");
+  check("terugkeer zonder sessie geeft een nette melding", (await new Client().raw("GET", "/api/plaud/callback?code=x&state=y")).headers.get("location") === "/account?plaud=mislukt");
+  check("gekoppeld", (await admin.get("/api/plaud")).data.connected === true);
+  check("de koppeling is persoonlijk", (await dee.client.get("/api/plaud")).data.connected === false);
+
+  const recs = await admin.get(`/api/plaud/recordings?from=${today}&to=${today}`);
+  check("opnames van vandaag", recs.status === 200 && recs.data.recordings.length === 2 && recs.data.recordings[0].durationMin === 60 && !!recs.data.recordings[0].startAt, JSON.stringify(recs.data));
+  check("ongeldige datum geweigerd", (await admin.get("/api/plaud/recordings?from=gisteren&to=morgen")).status === 400);
+
+  const imported = await admin.put(tPath, { plaudFileId: "rec-vandaag", title: "Bestuursoverleg (opname)", recordedAt: new Date().toISOString() });
+  check("transcript uit Plaud opgehaald", imported.status === 200 && imported.data.chars > 5000, JSON.stringify(imported.data).slice(0, 200));
+  const full = await admin.get(`${tPath}?body`);
+  const lines = full.data.transcript?.body?.split("\n") ?? [];
+  check("alle delen opgehaald, met tijd en spreker", lines.length === 130 && lines[0].startsWith("[00:00:00] Sanne Visser: Welkom") && lines[129].startsWith("[00:19:21] "), `${lines.length} regels, ${lines[0]}`);
+  const meta = await admin.get(tPath);
+  check("gegevens van het transcript zonder de tekst", meta.data.transcript.source === "plaud" && meta.data.transcript.chars === imported.data.chars && meta.data.transcript.body === undefined);
+  check("deelnemer ziet het transcript niet", (await dee.client.get(tPath)).status === 403);
+  check("buitenstaander ziet het transcript niet", (await bui.client.get(tPath)).status === 404);
+  check("deelnemer kan geen transcript plaatsen", (await dee.client.put(tPath, { text: "x".repeat(500) })).status === 403);
+  check("opname zonder transcript geeft uitleg", (await admin.put(tPath, { plaudFileId: "rec-leeg" })).status === 409);
+  check("onbekende opname", (await admin.put(tPath, { plaudFileId: "bestaat-niet" })).status === 502);
+
+  plaud.expireAccess();
+  check("verlopen sleutel wordt vanzelf ververst", (await admin.put(tPath, { plaudFileId: "rec-vandaag" })).status === 200);
+  plaud.revokeAll();
+  const revoked = await admin.put(tPath, { plaudFileId: "rec-vandaag" });
+  check("ingetrokken toestemming vraagt opnieuw koppelen", revoked.status === 409 && revoked.data.code === "plaud_reconnect", JSON.stringify(revoked));
+  check("koppeling is dan weg", (await admin.get("/api/plaud")).data.connected === false);
+  const second = await consent(admin);
+  check("opnieuw koppelen", (await admin.raw("GET", second.callback)).headers.get("location") === "/account?plaud=gekoppeld");
+  check("ontkoppelen", (await admin.del("/api/plaud")).status === 200 && (await admin.get("/api/plaud")).data.connected === false);
+
+  check("te korte tekst geweigerd", (await admin.put(tPath, { text: "Te kort." })).status === 400);
+  const pasted = await admin.put(tPath, { text: full.data.transcript.body, title: "Geplakt transcript" });
+  check("transcript als tekst geplaatst", pasted.status === 200 && (await admin.get(tPath)).data.transcript.source === "tekst");
+
+  // Concept-notulen: klaarzetten, op de achtergrond uitvoeren, stand opvragen.
+  const notesPath = `${tPath}/notes`;
+  check("assistent uit: geen concept-notulen", (await admin.post(notesPath)).status === 403);
+  await admin.patch(`/api/organisations/${org1}`, { aiEnabled: true });
+  check("deelnemer kan geen concept-notulen vragen", (await dee.client.post(notesPath)).status === 403);
+  const job = await admin.post(notesPath);
+  check("klus klaargezet", job.status === 200 && !!job.data.jobId && job.data.running === false, JSON.stringify(job));
+  check("tweede aanvraag sluit aan bij de lopende klus", (await admin.post(notesPath)).data.jobId === job.data.jobId);
+  check("klus van een ander is onzichtbaar", (await dee.client.get(`/api/jobs/${job.data.jobId}`)).status === 404);
+  check("een ander kan de klus niet starten", (await dee.client.post(`/api/background/jobs/${job.data.jobId}/run`)).status < 300 && (await admin.get(`/api/jobs/${job.data.jobId}`)).data.status === "wacht");
+  const run = await admin.post(`/api/background/jobs/${job.data.jobId}/run`);
+  check("achtergrondwerk gestart", run.status === 202 || run.status === 200, `${run.status}`);
+  let state;
+  for (let i = 0; i < 40; i++) {
+    state = (await admin.get(`/api/jobs/${job.data.jobId}`)).data;
+    if (state.status === "klaar" || state.status === "mislukt") break;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  const noted = state.result?.items ?? [];
+  check("concept-notulen per agendapunt", state.status === "klaar" && noted.some((n) => n.agendaItemId === itemIds[1] && n.notes.includes("begroting")), JSON.stringify(state).slice(0, 300));
+  check("concept legt zelf niets vast", (await admin.get(`/api/meetings/${meetingId}`)).data.items.find((i) => i.id === itemIds[1]).notes.includes("xyzzy"));
+  check("scherm vindt de laatste klus terug", (await admin.get(tPath)).data.job?.id === job.data.jobId);
+  await admin.patch(`/api/organisations/${org1}`, { aiEnabled: false });
+  await plaud.close();
+}
+
 step("6. Afronden, vergrendeling en overnemen");
 let nextMeetingId;
 {
   check("afronden", (await admin.patch(`/api/meetings/${meetingId}`, { status: "afgerond" })).status === 200);
   check("afronden beëindigt de vergadermodus", (await admin.get(`/api/meetings/${meetingId}/live`)).data.liveStartedAt === null);
+  check("afgerond: transcript niet meer te vervangen", (await admin.put(`/api/meetings/${meetingId}/transcript`, { text: "x".repeat(500) })).status === 409);
+  check("afgerond: transcript nog wel in te zien", (await admin.get(`/api/meetings/${meetingId}/transcript`)).data.transcript?.source === "tekst");
+  check("afgerond: transcript verwijderen kan", (await admin.del(`/api/meetings/${meetingId}/transcript`)).status === 200 && (await admin.get(`/api/meetings/${meetingId}/transcript`)).data.transcript === null);
   check("afgerond: agenda vergrendeld", (await admin.post(`/api/meetings/${meetingId}/items`, { title: "Te laat" })).status === 409);
   check("afgerond: titel vergrendeld", (await admin.patch(`/api/meetings/${meetingId}`, { title: "Anders" })).status === 409);
   check("afgerond: besluittekst vergrendeld", (await admin.patch(`/api/decisions/${decisionId}`, { text: "Herschreven" })).status === 409);

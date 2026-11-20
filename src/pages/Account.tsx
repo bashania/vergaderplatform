@@ -2,6 +2,7 @@ import { useState } from "react";
 import { api } from "../api";
 import { useAuth, useUser } from "../auth";
 import { PasskeyButton } from "../components/PasskeyButton";
+import { PlaudCard } from "../components/Transcript";
 import { fmtDateTime } from "../lib";
 import { addPasskey, deviceName, passkeysSupported } from "../passkeys";
 import { Button, Empty, Field, Form, Loader, useLoad, useRun, useToast } from "../ui";
@@ -197,6 +198,7 @@ export default function AccountPage() {
 
       <Passkeys />
       <Password />
+      <PlaudCard />
     </div>
   );
 }
