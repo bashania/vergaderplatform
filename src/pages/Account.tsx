@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api } from "../api";
 import { useAuth, useUser } from "../auth";
+import { CalendarCard } from "../components/CalendarCard";
 import { PasskeyButton } from "../components/PasskeyButton";
 import { PlaudCard } from "../components/Transcript";
 import { fmtDateTime } from "../lib";
@@ -196,6 +197,7 @@ export default function AccountPage() {
         </div>
       </section>
 
+      <CalendarCard />
       <Passkeys />
       <Password />
       <PlaudCard />

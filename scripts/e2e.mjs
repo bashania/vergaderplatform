@@ -1,6 +1,8 @@
 // End-to-end test van de API. Draait tegen een lege (of eerder door dit script gevulde) database.
 //   BASE=http://localhost:8888 SETUP_CODE=lokale-testcode node scripts/e2e.mjs
 import { createHash, randomBytes } from "node:crypto";
+import { simpleParser } from "mailparser";
+import { SMTPServer } from "smtp-server";
 import { startFakePlaud } from "./fake-plaud.mjs";
 import { SoftAuthenticator } from "./soft-authenticator.mjs";
 
@@ -752,6 +754,146 @@ step("5c. Transcript, koppeling met Plaud en concept-notulen");
   check("scherm vindt de laatste klus terug", (await admin.get(tPath)).data.job?.id === job.data.jobId);
   await admin.patch(`/api/organisations/${org1}`, { aiEnabled: false });
   await plaud.close();
+}
+
+step("5d. Agenda-abonnement, punten aandragen en e-mail");
+{
+  // --- agenda-abonnement ---
+  check("agenda-abonnement staat uit", (await dee.client.get("/api/account/calendar")).data.active === false);
+  const feed = await dee.client.post("/api/account/calendar");
+  check("agendalink gemaakt", feed.status === 200 && feed.data.url.startsWith(`${BASE}/api/agenda/`) && feed.data.url.endsWith(".ics"), JSON.stringify(feed.data));
+  const ics = await fetch(feed.data.url);
+  const body = await ics.text();
+  check("agenda zonder inloggen op te halen", ics.status === 200 && ics.headers.get("content-type").startsWith("text/calendar") && body.startsWith("BEGIN:VCALENDAR"));
+  check("gepubliceerde vergadering met agendapunten staat erin", body.includes("SUMMARY:MT week 48") && body.includes("Begroting 2027") && body.includes(`/vergaderingen/${meetingId}`), body.slice(0, 600));
+  check("lange regels zijn afgebroken", body.split("\r\n").every((l) => Buffer.byteLength(l) <= 75));
+  const other = await bui.client.post("/api/account/calendar");
+  check("agenda van iemand uit een andere organisatie bevat deze vergadering niet", !(await (await fetch(other.data.url)).text()).includes("MT week 48"));
+  check("onbekende agendalink", (await fetch(`${BASE}/api/agenda/${"x".repeat(43)}.ics`)).status === 404);
+  const renewed = await dee.client.post("/api/account/calendar");
+  check("nieuwe link maakt de oude ongeldig", (await fetch(feed.data.url)).status === 404 && (await fetch(renewed.data.url)).status === 200);
+  check("abonnement stoppen", (await dee.client.del("/api/account/calendar")).status === 200 && (await fetch(renewed.data.url)).status === 404);
+  await bui.client.del("/api/account/calendar");
+
+  // --- agendapunten aandragen ---
+  const sPath = `/api/overleggen/${overlegId}/suggestions`;
+  const s1 = await dee.client.post(sPath, { title: "Nieuwe bedrijfsbus", description: "De oude is aan vervanging toe." });
+  check("deelnemer draagt een punt aan", s1.status === 200 && !!s1.data.id, JSON.stringify(s1));
+  check("buitenstaander kan niets aandragen of zien", (await bui.client.post(sPath, { title: "X" })).status === 404 && (await bui.client.get(sPath)).status === 404);
+  check("aangedragen punt zichtbaar voor het overleg", (await admin.get(sPath)).data.suggestions.some((s) => s.id === s1.data.id && s.status === "open" && s.createdByName === "Dee Deelnemer"));
+  check("deelnemer kan niet zelf op de agenda zetten", (await dee.client.post(`/api/suggestions/${s1.data.id}/place`, { meetingId })).status === 403);
+  const placed = await admin.post(`/api/suggestions/${s1.data.id}/place`, { meetingId });
+  const withItem = await admin.get(`/api/meetings/${meetingId}`);
+  const newItem = withItem.data.items.find((i) => i.id === placed.data.itemId);
+  check("secretaris zet het punt op de agenda", placed.status === 200 && newItem?.title === "Nieuwe bedrijfsbus" && newItem.presenter === "Dee Deelnemer" && newItem.description.includes("vervanging"), JSON.stringify(newItem));
+  const afterPlace = (await dee.client.get(sPath)).data.suggestions.find((s) => s.id === s1.data.id);
+  check("aandrager ziet op welke vergadering het staat", afterPlace.status === "geplaatst" && afterPlace.meetingId === meetingId);
+  check("al geplaatst punt niet nog eens te plaatsen", (await admin.post(`/api/suggestions/${s1.data.id}/place`, { meetingId })).status === 409);
+  const s2 = await dee.client.post(sPath, { title: "Kerstborrel" });
+  check("deelnemer kan niet afwijzen", (await dee.client.post(`/api/suggestions/${s2.data.id}/dismiss`, { reply: "x" })).status === 403);
+  check("secretaris wijst af met reden", (await admin.post(`/api/suggestions/${s2.data.id}/dismiss`, { reply: "Hoort bij de personeelsvereniging." })).status === 200);
+  check("aandrager ziet de reden", (await dee.client.get(sPath)).data.suggestions.find((s) => s.id === s2.data.id).reply.includes("personeelsvereniging"));
+  const s3 = await dee.client.post(sPath, { title: "Toch niet" });
+  check("eigen openstaand punt intrekken", (await dee.client.del(`/api/suggestions/${s3.data.id}`)).status === 200);
+  check("afgehandeld punt niet zelf te verwijderen", (await dee.client.del(`/api/suggestions/${s2.data.id}`)).status === 403);
+  check("agendapunt weer van de agenda (latere stappen tellen de punten)", (await admin.del(`/api/items/${placed.data.itemId}`)).status === 200);
+
+  // --- e-mail: nagebouwde mailserver vangt alles op ---
+  const inbox = [];
+  const logins = [];
+  const smtp = new SMTPServer({
+    authOptional: true,
+    allowInsecureAuth: true,
+    disabledCommands: ["STARTTLS"],
+    onAuth: (auth, _session, done) => {
+      logins.push(`${auth.username}:${auth.password}`);
+      done(null, { user: auth.username });
+    },
+    onData: (stream, _session, done) => simpleParser(stream).then((mail) => (inbox.push(mail), done()), done),
+  });
+  await new Promise((r) => smtp.listen(2525, r));
+  const to = (mail) => mail.to.value[0].address;
+  const arrived = async (n) => {
+    for (let i = 0; i < 50 && inbox.length < n; i++) await new Promise((r) => setTimeout(r, 200));
+    return inbox.length;
+  };
+
+  const before = await admin.get("/api/admin/mail");
+  check("mail nog niet ingesteld", before.status === 200 && before.data.available === true && before.data.settings === null);
+  check("deelnemer komt niet bij de mailinstellingen", (await dee.client.get("/api/admin/mail")).status === 403);
+  check("zonder mailserver geen mail naar deelnemers", (await admin.post(`/api/meetings/${meetingId}/mail`, { kind: "agenda" })).status === 409);
+  const settings = { host: "localhost", port: 2525, security: "geen", user: "mailer", pass: "geheim-wachtwoord", fromName: "Vergaderen", fromAddress: "vergaderen@test.example" };
+  check("mailserver instellen", (await admin.put("/api/admin/mail", settings)).status === 200);
+  const saved = await admin.get("/api/admin/mail");
+  check("wachtwoord komt niet terug naar het scherm", saved.data.settings.hasPassword === true && saved.data.settings.pass === undefined && saved.data.settings.host === "localhost");
+  check("sessie meldt dat mailen kan", (await dee.client.get("/api/session")).data.mailEnabled === true);
+  check("testmail", (await admin.post("/api/admin/mail/test")).status === 200 && (await arrived(1)) === 1 && to(inbox[0]) === adminCreds.email && inbox[0].subject.includes("Testmail"));
+  check("aangemeld bij de mailserver met het opgeslagen wachtwoord", logins.includes("mailer:geheim-wachtwoord"));
+  check("afzender zoals ingesteld", inbox[0].from.value[0].address === "vergaderen@test.example" && inbox[0].from.value[0].name === "Vergaderen");
+  await admin.put("/api/admin/mail", { ...settings, port: 2526, pass: "" });
+  const failed = await admin.post("/api/admin/mail/test");
+  check("onbereikbare mailserver geeft de melding door", failed.status === 502 && failed.data.error.includes("mailserver"), JSON.stringify(failed));
+  await admin.put("/api/admin/mail", { ...settings, pass: "" });
+  check("leeg wachtwoord laat het bestaande staan", (await admin.post("/api/admin/mail/test")).status === 200 && logins.at(-1) === "mailer:geheim-wachtwoord");
+  inbox.length = 0;
+
+  const mia = await admin.post(`/api/overleggen/${overlegId}/members`, { email: `mia-${RUN}@test.example`, name: "Mia Mail" });
+  check("uitnodiging wordt gemaild", mia.status === 200 && mia.data.mailed === true && (await arrived(1)) === 1 && to(inbox[0]) === `mia-${RUN}@test.example`, JSON.stringify(mia.data));
+  check("mail bevat de eenmalige link", inbox[0].text.includes(`${BASE}/welkom#${mia.data.token}`) && inbox[0].html.includes("Account activeren"));
+  inbox.length = 0;
+
+  check("deelnemer kan de deelnemers niet mailen", (await dee.client.post(`/api/meetings/${meetingId}/mail`, { kind: "agenda" })).status === 403);
+  const agendaMail = await admin.post(`/api/meetings/${meetingId}/mail`, { kind: "agenda", note: "Lees vooral de begroting." });
+  await arrived(agendaMail.data.sent ?? 99);
+  const toDee = inbox.find((m) => to(m) === dee.email);
+  check("agenda gemaild naar alle deelnemers", agendaMail.status === 200 && agendaMail.data.sent === inbox.length && agendaMail.data.failed.length === 0 && !!toDee, JSON.stringify(agendaMail.data));
+  check(
+    "agendamail: onderwerp, agenda, bericht, link en antwoordadres",
+    toDee.subject.startsWith("Agenda: MT week 48") && toDee.text.includes("2. Begroting 2027") && toDee.text.includes("Lees vooral de begroting.") && toDee.text.includes(`/vergaderingen/${meetingId}`) && toDee.replyTo.value[0].address === adminCreds.email,
+    toDee.text.slice(0, 400),
+  );
+  check("agendamail heeft een agendabestand als bijlage", toDee.attachments.length === 1 && toDee.attachments[0].content.toString().includes("SUMMARY:MT week 48"));
+  inbox.length = 0;
+  const verslagMail = await admin.post(`/api/meetings/${meetingId}/mail`, { kind: "verslag" });
+  await arrived(verslagMail.data.sent ?? 99);
+  const verslag = inbox.find((m) => to(m) === dee.email);
+  check("verslag gemaild met besluiten en acties", verslag?.subject.startsWith("Verslag: MT week 48") && /\d{4}-\d{3}: /.test(verslag.text) && verslag.text.includes("Offertes opvragen"), verslag?.text.slice(0, 500));
+  inbox.length = 0;
+
+  // Dagelijkse herinneringen: de dag vóór de vergadering, met een actie die dan afloopt.
+  const meetingDay = new Date(startsAt).toLocaleDateString("sv-SE", { timeZone: "Europe/Amsterdam" });
+  const dayBefore = new Date(new Date(`${meetingDay}T12:00:00Z`).getTime() - 86400e3).toISOString().slice(0, 10);
+  const soon = await admin.post(`/api/meetings/${meetingId}/actions`, { text: "Cijfers aanleveren", ownerId: dee.id, dueDate: meetingDay, agendaItemId: itemIds[1] });
+  const taskKey = createHash("sha256").update("daily:lokale-sleutel-voor-tests").digest("hex");
+  const daily = (key) => new Client().call("POST", "/api/background/daily", { body: { today: dayBefore }, headers: { "x-task-key": key } });
+  await daily("verkeerde-sleutel");
+  await new Promise((r) => setTimeout(r, 1500));
+  check("dagelijkse taak zonder de juiste sleutel doet niets", inbox.length === 0);
+  check("herinneringen uitzetten", (await dee.client.patch("/api/account/mail", { reminders: false })).status === 200 && (await dee.client.get("/api/account/mail")).data.reminders === false);
+  await daily(taskKey);
+  await new Promise((r) => setTimeout(r, 2500));
+  check("wie herinneringen uit heeft staan, krijgt er geen", inbox.length >= 1 && !inbox.some((m) => to(m) === dee.email), inbox.map(to).join());
+  check("anderen krijgen de herinnering voor morgen", inbox.every((m) => m.subject.startsWith("Morgen: MT week 48")));
+  await dee.client.patch("/api/account/mail", { reminders: true });
+  inbox.length = 0;
+  await daily(taskKey);
+  await arrived(2);
+  await new Promise((r) => setTimeout(r, 800));
+  const deeMails = inbox.filter((m) => to(m) === dee.email);
+  check("herinnering voor de vergadering van morgen", deeMails.some((m) => m.subject.startsWith("Morgen: MT week 48") && m.text.includes("Uitzetten kan onder Mijn account")), inbox.map((m) => `${to(m)}: ${m.subject}`).join(" | "));
+  const digest = deeMails.find((m) => m.subject.startsWith("Je acties"));
+  check("overzicht van aflopende en verlopen acties", !!digest && digest.text.includes("Cijfers aanleveren") && digest.text.includes("morgen") && digest.text.includes("Offertes opvragen") && digest.text.includes(`${BASE}/acties`), digest?.text.slice(0, 500));
+  check("niemand anders dan de actiehouder krijgt het overzicht", inbox.filter((m) => m.subject.startsWith("Je acties")).length === 1);
+  inbox.length = 0;
+  await daily(taskKey);
+  await new Promise((r) => setTimeout(r, 2500));
+  check("dezelfde herinnering gaat niet twee keer de deur uit", inbox.length === 0, inbox.map((m) => m.subject).join());
+  check("logboek voor de beheerder", (await admin.get("/api/admin/mail")).data.log.some((l) => l.kind === "herinnering" && l.status === "verzonden") && (await admin.get("/api/admin/mail")).data.log.some((l) => l.status === "mislukt"));
+
+  check("testactie opgeruimd", (await admin.del(`/api/actions/${soon.data.id}`)).status === 200);
+  check("Mia weer uit het overleg", (await admin.del(`/api/overleggen/${overlegId}/members/${mia.data.userId}`)).status === 200);
+  check("mailinstellingen wissen zet mailen uit", (await admin.del("/api/admin/mail")).status === 200 && (await admin.get("/api/session")).data.mailEnabled === false);
+  await new Promise((r) => smtp.close(r));
 }
 
 step("6. Afronden, vergrendeling en overnemen");

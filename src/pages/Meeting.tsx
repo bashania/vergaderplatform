@@ -7,6 +7,7 @@ import { ProposalsModal, useAi } from "../components/Ai";
 import { AgendaPaste } from "../components/AgendaPaste";
 import { DocList, UploadButton } from "../components/Docs";
 import { ActionItem, ActionModal, DecisionModal } from "../components/Records";
+import { MeetingSuggestions } from "../components/Suggestions";
 import { TranscriptCard } from "../components/Transcript";
 import {
   addMinutes,
@@ -603,6 +604,12 @@ export default function MeetingPage() {
             Heropenen
           </Button>
         )}
+        {isSec && meeting.status !== "concept" && (
+          <Link className="btn ghost" to={`/overleggen/${meeting.overlegId}?nieuw=${meeting.id}`}>
+            <Icon name="plus" size={17} />
+            Volgende vergadering plannen
+          </Link>
+        )}
         <Button variant="ghost" icon="calendar" onClick={() => downloadIcs(meeting)}>
           Zet in mijn agenda
         </Button>
@@ -759,6 +766,8 @@ export default function MeetingPage() {
           )}
         </section>
       )}
+
+      {canEdit && <MeetingSuggestions overlegId={meeting.overlegId} meetingId={meeting.id} onPlaced={reload} />}
 
       {isSec && meeting.status !== "concept" && <TranscriptCard meeting={meeting} items={items} canEdit={canEdit} onChanged={reload} />}
 
