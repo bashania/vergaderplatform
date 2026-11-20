@@ -70,6 +70,12 @@ route.patch("/api/organisations/:id", async (c) => {
     vals.push(b.requirePasskey === true);
     sets.push(`require_passkey = $${vals.length}`);
   }
+  if (b.aiEnabled !== undefined) {
+    // Of notulen en stukken naar een taalmodel mogen, beslist de organisatie zelf, niet de platformbeheerder.
+    await requireOrgAdmin(c.user, id);
+    vals.push(b.aiEnabled === true);
+    sets.push(`ai_enabled = $${vals.length}`);
+  }
   if (!sets.length) throw bad("Geen wijzigingen.");
   await q(`UPDATE organisations SET ${sets.join(", ")} WHERE id = $1`, vals);
   return { ok: true };

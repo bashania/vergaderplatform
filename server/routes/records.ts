@@ -209,10 +209,11 @@ route.get("/api/dashboard", async (c) => {
        SELECT mt.id, mt.title, mt.starts_at, mt.duration_min, mt.location, mt.status, mt.overleg_id, acc.overleg_name,
               (SELECT count(*)::int FROM agenda_items ai WHERE ai.meeting_id = mt.id) AS item_count,
               (SELECT count(*)::int FROM documents d WHERE d.meeting_id = mt.id AND d.status = 'ready') AS document_count,
-              (SELECT status FROM attendance at WHERE at.meeting_id = mt.id AND at.user_id = $1::uuid) AS my_attendance
+              (SELECT status FROM attendance at WHERE at.meeting_id = mt.id AND at.user_id = $1::uuid) AS my_attendance,
+              (mt.live_started_at IS NOT NULL) AS live
          FROM meetings mt JOIN acc ON acc.overleg_id = mt.overleg_id
         WHERE ${VISIBLE} AND NOT acc.archived AND mt.status <> 'afgerond'
-          AND mt.starts_at >= now() - interval '3 hours'
+          AND (mt.starts_at >= now() - interval '3 hours' OR mt.live_started_at IS NOT NULL)
         ORDER BY mt.starts_at LIMIT 10`,
       p,
     ),

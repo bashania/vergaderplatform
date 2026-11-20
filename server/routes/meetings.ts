@@ -99,12 +99,13 @@ route.get("/api/meetings/:id", async (c) => {
   const { meeting, role } = await loadMeeting(c.user, id);
   const [items, documents, decisions, actions, members, carriedActions] = await Promise.all([
     q(
-      `SELECT id, parent_id, position, title, kind, presenter, duration_min, description, notes
+      `SELECT id, parent_id, position, title, kind, presenter, duration_min, description, notes, spent_sec
          FROM agenda_items WHERE meeting_id = $1 ORDER BY position, title`,
       [id],
     ),
     q(
-      `SELECT d.id, d.agenda_item_id, d.name, d.mime, d.size::float8 AS size, d.uploaded_at, d.uploaded_by, u.name AS uploaded_by_name
+      `SELECT d.id, d.agenda_item_id, d.name, d.mime, d.size::float8 AS size, d.uploaded_at, d.uploaded_by, u.name AS uploaded_by_name,
+              (d.summary <> '') AS has_summary
          FROM documents d LEFT JOIN users u ON u.id = d.uploaded_by
         WHERE d.meeting_id = $1 AND d.status = 'ready' ORDER BY d.uploaded_at`,
       [id],
@@ -163,8 +164,94 @@ route.patch("/api/meetings/:id", async (c) => {
   if (b.status !== undefined) set("status", oneOf(b.status, "Status", STATUSES));
   if (sets.length === 1) throw bad("Geen wijzigingen.");
   await q(`UPDATE meetings SET ${sets.join(", ")} WHERE id = $1`, vals);
+  // Alleen een gepubliceerde vergadering kan bezig zijn: afronden of terug naar concept beëindigt de vergadermodus.
+  if (b.status !== undefined && b.status !== "gepubliceerd") await q(STOP_LIVE, [id]);
   return { ok: true };
 });
+
+// ---------- vergadermodus ----------
+
+/**
+ * Het lopende agendapunt afsluiten (de verstreken tijd optellen bij dat punt) en in hetzelfde
+ * statement de nieuwe stand zetten: zo telt een dubbele klik de tijd niet twee keer.
+ */
+const CLOSE_ITEM = `closed AS (
+  UPDATE agenda_items i
+     SET spent_sec = i.spent_sec + GREATEST(0, extract(epoch FROM now() - mt.live_item_started_at))::int
+    FROM meetings mt
+   WHERE mt.id = $1 AND i.id = mt.live_item_id AND mt.live_item_started_at IS NOT NULL
+)`;
+const STOP_LIVE = `WITH ${CLOSE_ITEM}
+  UPDATE meetings SET live_started_at = NULL, live_item_id = NULL, live_item_started_at = NULL WHERE id = $1`;
+
+/**
+ * Stand van de vergadermodus. `version` verandert zodra er iets aan agenda, notulen, besluiten,
+ * acties of stukken wijzigt; meekijkers halen alleen dan de hele vergadering opnieuw op.
+ */
+function liveState(meetingId: string) {
+  return q1(
+    `SELECT mt.status, mt.live_started_at, mt.live_item_id, mt.live_item_started_at, now() AS now,
+            md5(concat_ws('|', mt.updated_at::text, mt.status,
+              coalesce(mt.live_item_id::text, '-'), coalesce(mt.live_started_at::text, '-'),
+              (SELECT md5(coalesce(string_agg(i::text, '|' ORDER BY i.id), '')) FROM agenda_items i WHERE i.meeting_id = mt.id),
+              (SELECT md5(coalesce(string_agg(d::text, '|' ORDER BY d.id), '')) FROM decisions d WHERE d.meeting_id = mt.id),
+              (SELECT md5(coalesce(string_agg(a::text, '|' ORDER BY a.id), '')) FROM actions a WHERE a.meeting_id = mt.id),
+              (SELECT md5(coalesce(string_agg(x.id::text || x.name || (x.summary <> '')::text, '|' ORDER BY x.id), ''))
+                 FROM documents x WHERE x.meeting_id = mt.id AND x.status = 'ready')
+            )) AS version
+       FROM meetings mt WHERE mt.id = $1`,
+    [meetingId],
+  );
+}
+
+route.get("/api/meetings/:id/live", async (c) => {
+  const id = uuid(c.params.id, "Vergadering");
+  await loadMeeting(c.user, id);
+  return liveState(id);
+});
+
+route.post(
+  "/api/meetings/:id/live",
+  async (c) => {
+    const id = uuid(c.params.id, "Vergadering");
+    const { meeting } = await loadMeeting(c.user, id, { edit: true });
+    if (meeting.status !== "gepubliceerd") {
+      throw new HttpError(409, "Publiceer de vergadering eerst. Daarna kun je de vergadermodus starten.");
+    }
+    const b = await c.body();
+    const action = oneOf(b.action, "Actie", ["start", "goto", "stop"] as const);
+    if (action === "stop") {
+      await q(STOP_LIVE, [id]);
+      return liveState(id);
+    }
+    let itemId = optUuid(b.itemId, "Agendapunt");
+    // Opnieuw starten terwijl de vergadering al loopt: gewoon verder waar we waren.
+    if (action === "start" && !itemId && meeting.liveItemId) return liveState(id);
+    if (itemId) {
+      if (!(await q1(`SELECT 1 AS x FROM agenda_items WHERE id = $1 AND meeting_id = $2`, [itemId, id]))) {
+        throw bad("Het agendapunt hoort niet bij deze vergadering.");
+      }
+    } else {
+      const first = await q1<{ id: string }>(
+        `SELECT id FROM agenda_items WHERE meeting_id = $1 AND parent_id IS NULL ORDER BY position, title LIMIT 1`,
+        [id],
+      );
+      if (!first) throw bad("Deze vergadering heeft nog geen agendapunten.");
+      itemId = first.id;
+    }
+    // Hetzelfde punt nog eens kiezen laat de klok doorlopen.
+    if (itemId !== meeting.liveItemId) {
+      await q(
+        `WITH ${CLOSE_ITEM}
+         UPDATE meetings SET live_started_at = COALESCE(live_started_at, now()), live_item_id = $2, live_item_started_at = now()
+          WHERE id = $1`,
+        [id, itemId],
+      );
+    }
+    return liveState(id);
+  },
+  { audit: false },
+);
 
 route.delete("/api/meetings/:id", async (c) => {
   const id = uuid(c.params.id, "Vergadering");

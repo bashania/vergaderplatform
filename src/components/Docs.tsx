@@ -2,12 +2,17 @@ import { useRef, useState } from "react";
 import { api, canOpenDirect, downloadInParts, errorText, fileUrl, uploadFile, type UploadTarget } from "../api";
 import { fileExt, fmtDate, fmtSize, type Doc } from "../lib";
 import { Button, Icon, useRun, useToast } from "../ui";
+import { canSummarize, SummaryModal, useAi } from "./Ai";
 
 function DocRow({ doc, canManage, onChanged }: { doc: Doc; canManage: boolean; onChanged: () => void }) {
   const run = useRun();
   const toast = useToast();
   const [progress, setProgress] = useState<number | null>(null);
+  const [summary, setSummary] = useState(false);
+  const ai = useAi();
   const direct = canOpenDirect(doc);
+  // Een bestaande samenvatting blijft leesbaar, ook als de assistent later is uitgezet.
+  const showSummary = doc.hasSummary || (ai && canSummarize(doc));
 
   // Grote bestanden passen niet in één antwoord van de server: in delen ophalen.
   async function downloadLarge() {
@@ -44,6 +49,11 @@ function DocRow({ doc, canManage, onChanged }: { doc: Doc; canManage: boolean; o
           </div>
         )}
       </div>
+      {showSummary && (
+        <Button variant="ghost" small icon="spark" className="no-print" title="Samenvatting door de AI-assistent" aria-label="Samenvatting" onClick={() => setSummary(true)}>
+          <span className="doc-label">Samenvatting</span>
+        </Button>
+      )}
       {direct ? (
         <a className="btn ghost icon no-print" href={fileUrl(doc, true)} aria-label={`Download ${doc.name}`} title="Downloaden">
           <Icon name="download" size={17} />
@@ -64,6 +74,7 @@ function DocRow({ doc, canManage, onChanged }: { doc: Doc; canManage: boolean; o
           }}
         />
       )}
+      {summary && <SummaryModal doc={doc} canRefresh={canManage} onClose={() => setSummary(false)} onChanged={onChanged} />}
     </div>
   );
 }

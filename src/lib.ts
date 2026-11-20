@@ -17,6 +17,8 @@ export type Organisation = {
   role: "beheerder" | "lid";
   /** Alleen toegankelijk als je met een passkey bent ingelogd. */
   requirePasskey: boolean;
+  /** De beheerder heeft de AI-assistent voor deze organisatie aangezet. */
+  aiEnabled: boolean;
 };
 export type MeetingStatus = "concept" | "gepubliceerd" | "afgerond";
 
@@ -44,6 +46,8 @@ export type MeetingSummary = {
   overlegId?: string;
   overlegName?: string;
   myAttendance?: "aanwezig" | "afwezig" | null;
+  /** De vergadering is nu bezig (vergadermodus). */
+  live?: boolean;
 };
 
 export type Member = {
@@ -65,6 +69,8 @@ export type Doc = {
   uploadedAt: string;
   uploadedBy?: string | null;
   uploadedByName?: string | null;
+  /** Er is al een samenvatting gemaakt. */
+  hasSummary?: boolean;
   meetingId?: string | null;
   meetingTitle?: string | null;
   overlegId?: string;
@@ -83,6 +89,8 @@ export type AgendaItem = {
   durationMin: number | null;
   description: string;
   notes: string;
+  /** Werkelijk bestede tijd in de vergadermodus, in seconden. */
+  spentSec: number;
 };
 
 export type Decision = {
@@ -129,6 +137,20 @@ export type Meeting = {
   /** Toelichting bij de agenda als geheel. */
   description: string;
   notes: string;
+  /** Gevuld zolang de vergadering bezig is (vergadermodus). */
+  liveStartedAt: string | null;
+  liveItemId: string | null;
+  liveItemStartedAt: string | null;
+};
+
+/** Stand van de vergadermodus; `version` verandert zodra er iets aan de vergadering wijzigt. */
+export type LiveState = {
+  status: MeetingStatus;
+  liveStartedAt: string | null;
+  liveItemId: string | null;
+  liveItemStartedAt: string | null;
+  now: string;
+  version: string;
 };
 
 export type MeetingDetail = {
@@ -213,5 +235,25 @@ export const STATUS_LABEL: Record<MeetingStatus, string> = {
   gepubliceerd: "Gepubliceerd",
   afgerond: "Afgerond",
 };
+
+/** Agendapunten in de volgorde van de vergadering, met hun nummer (1, 2, 2.1, ...). */
+export function agendaOrder(items: AgendaItem[]): { item: AgendaItem; number: string }[] {
+  const out: { item: AgendaItem; number: string }[] = [];
+  items
+    .filter((i) => !i.parentId)
+    .forEach((top, i) => {
+      out.push({ item: top, number: `${i + 1}` });
+      items.filter((c) => c.parentId === top.id).forEach((child, j) => out.push({ item: child, number: `${i + 1}.${j + 1}` }));
+    });
+  return out;
+}
+
+/** Duur als 7:05 of 1:02:09. */
+export function fmtClock(totalSec: number): string {
+  const s = Math.max(0, Math.floor(totalSec));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return h ? `${h}:${pad(m)}:${pad(s % 60)}` : `${m}:${pad(s % 60)}`;
+}
 
 export const firstName = (name: string) => name.trim().split(/\s+/)[0] ?? name;

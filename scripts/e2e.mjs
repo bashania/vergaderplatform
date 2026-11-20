@@ -567,10 +567,101 @@ let decisionId, actionId;
   check("aanwezigheid opgeslagen", m.data.members.find((x) => x.id === dee.id).attendance === "aanwezig");
 }
 
+step("5b. Vergadermodus en AI-assistent");
+{
+  const livePath = `/api/meetings/${meetingId}/live`;
+  const meetingPath = `/api/meetings/${meetingId}`;
+  const before = await admin.get(meetingPath);
+  const tops = before.data.items.filter((i) => !i.parentId);
+
+  const live0 = await dee.client.get(livePath);
+  check("stand van de vergadermodus voor deelnemer", live0.status === 200 && live0.data.liveStartedAt === null && typeof live0.data.version === "string", JSON.stringify(live0.data));
+  check("buitenstaander ziet de vergadermodus niet", (await bui.client.get(livePath)).status === 404);
+  check("deelnemer mag de vergadering niet starten", (await dee.client.post(livePath, { action: "start" })).status === 403);
+  check("onbekende actie geweigerd", (await admin.post(livePath, { action: "pauze" })).status === 400);
+
+  const started = await admin.post(livePath, { action: "start" });
+  check("starten begint bij het eerste agendapunt", started.status === 200 && started.data.liveItemId === tops[0].id && !!started.data.liveStartedAt, JSON.stringify(started.data));
+  check("versie verandert bij starten", started.data.version !== live0.data.version);
+  check("deelnemer ziet het actuele punt", (await dee.client.get(livePath)).data.liveItemId === tops[0].id);
+  check("dashboard toont de lopende vergadering", (await dee.client.get("/api/dashboard")).data.upcoming.some((m) => m.id === meetingId && m.live === true));
+  const again = await admin.post(livePath, { action: "start" });
+  check("opnieuw starten laat de klok doorlopen", again.data.liveItemStartedAt === started.data.liveItemStartedAt && again.data.liveStartedAt === started.data.liveStartedAt);
+
+  await new Promise((r) => setTimeout(r, 1200));
+  const moved = await admin.post(livePath, { action: "goto", itemId: tops[1].id });
+  check("naar het volgende punt", moved.status === 200 && moved.data.liveItemId === tops[1].id && moved.data.version !== started.data.version);
+  const during = await admin.get(meetingPath);
+  check("bestede tijd geteld bij het verlaten punt", during.data.items.find((i) => i.id === tops[0].id).spentSec >= 1, JSON.stringify(during.data.items.map((i) => i.spentSec)));
+  check("vergadering meldt dat ze bezig is", during.data.meeting.liveItemId === tops[1].id && !!during.data.meeting.liveStartedAt);
+  check("punt van een andere vergadering geweigerd", (await admin.post(livePath, { action: "goto", itemId: "00000000-0000-4000-8000-000000000000" })).status === 400);
+  const v1 = (await dee.client.get(livePath)).data.version;
+  await admin.patch(`/api/items/${tops[1].id}`, { notes: `${tops[1].notes} De vergadering stemt in met het jaarplan. Dee stuurt de offerte voor 15 januari naar de leden.`.trim() });
+  check("versie verandert bij nieuwe notulen", (await dee.client.get(livePath)).data.version !== v1);
+
+  const stopped = await admin.post(livePath, { action: "stop" });
+  check("vergadermodus beëindigen", stopped.status === 200 && stopped.data.liveStartedAt === null && stopped.data.liveItemId === null);
+  const draft = await admin.post(`/api/overleggen/${overlegId}/meetings`, { title: "Concept voor vergadermodus", startsAt, items: [{ title: "Punt" }] });
+  check("een concept kan niet starten", (await admin.post(`/api/meetings/${draft.data.id}/live`, { action: "start" })).status === 409);
+  check("testconcept opgeruimd", (await admin.del(`/api/meetings/${draft.data.id}`)).status === 200);
+  // Loopt door tot stap 6: afronden moet de vergadermodus beëindigen.
+  await admin.post(livePath, { action: "start" });
+
+  // --- AI-assistent (lokaal met vaste antwoorden, AI_FAKE=1) ---
+  const orgPath = `/api/organisations/${org1}`;
+  const proposalsPath = `/api/meetings/${meetingId}/ai/proposals`;
+  const summaryPath = `/api/documents/${smallDoc}/ai/summary`;
+  const session = await admin.get("/api/session");
+  check("assistent beschikbaar maar per organisatie uit", session.data.aiAvailable === true && session.data.organisations.find((o) => o.id === org1).aiEnabled === false);
+  check("uit: geen voorstellen", (await admin.post(proposalsPath)).status === 403);
+  check("uit: geen samenvatting", (await dee.client.post(summaryPath)).status === 403);
+  check("deelnemer mag de assistent niet aanzetten", (await dee.client.patch(orgPath, { aiEnabled: true })).status === 403);
+  check("beheerder zet de assistent aan", (await admin.patch(orgPath, { aiEnabled: true })).status === 200);
+  check("sessie meldt assistent aan", (await dee.client.get("/api/session")).data.organisations.find((o) => o.id === org1).aiEnabled === true);
+
+  const prop = await admin.post(proposalsPath);
+  check("voorstellen uit de notulen", prop.status === 200 && prop.data.decisions.length === 1 && prop.data.actions.length === 1, JSON.stringify(prop.data));
+  check(
+    "voorstel gekoppeld aan agendapunt, actiehouder en deadline",
+    prop.data.decisions[0]?.agendaItemId === tops[1].id && prop.data.actions[0]?.ownerId === dee.id && /^\d{4}-01-15$/.test(prop.data.actions[0]?.dueDate ?? ""),
+    JSON.stringify(prop.data),
+  );
+  const after = await admin.get(meetingPath);
+  check("voorstellen leggen zelf niets vast", after.data.decisions.length === before.data.decisions.length && after.data.actions.length === before.data.actions.length);
+  check("deelnemer kan geen voorstellen vragen", (await dee.client.post(proposalsPath)).status === 403);
+  check("buitenstaander kan geen voorstellen vragen", (await bui.client.post(proposalsPath)).status === 404);
+
+  const sum = await dee.client.post(summaryPath);
+  check("samenvatting van een tekststuk", sum.status === 200 && sum.data.cached === false && sum.data.summary.includes("Kernpunten") && !!sum.data.at, JSON.stringify(sum.data));
+  const cached = await dee.client.post(summaryPath);
+  check("tweede keer komt de samenvatting uit de opslag", cached.status === 200 && cached.data.cached === true && cached.data.summary === sum.data.summary);
+  check("deelnemer mag andermans samenvatting niet vernieuwen", (await dee.client.post(summaryPath, { refresh: true })).status === 403);
+  check("secretaris mag de samenvatting vernieuwen", (await admin.post(summaryPath, { refresh: true })).data.cached === false);
+  check("buitenstaander krijgt geen samenvatting", (await bui.client.post(summaryPath)).status === 404);
+  const docs = (await admin.get(meetingPath)).data.documents;
+  check("vergadering toont welk stuk een samenvatting heeft", docs.find((d) => d.id === smallDoc).hasSummary === true && docs.filter((d) => d.hasSummary).length === 1);
+  const pdf = docs.find((d) => d.name.endsWith(".pdf"));
+  const zip = docs.find((d) => d.name.endsWith(".zip"));
+  check("pdf samenvatten", !!pdf && (await admin.post(`/api/documents/${pdf.id}/ai/summary`)).status === 200);
+  check("zip is niet samen te vatten (415)", !!zip && (await admin.post(`/api/documents/${zip.id}/ai/summary`)).status === 415);
+
+  const usage = await admin.get(`${orgPath}/ai`);
+  check("verbruik zichtbaar voor de beheerder", usage.status === 200 && usage.data.enabled === true && usage.data.month.calls >= 4, JSON.stringify(usage.data));
+  check("deelnemer ziet het verbruik niet", (await dee.client.get(`${orgPath}/ai`)).status === 403);
+  const test = await admin.post("/api/admin/ai/test");
+  check("verbindingstest", test.status === 200 && test.data.ok === true && test.data.reply === "werkt", JSON.stringify(test.data));
+  check("verbindingstest alleen voor de platformbeheerder", (await dee.client.post("/api/admin/ai/test")).status === 403);
+
+  check("assistent weer uit", (await admin.patch(orgPath, { aiEnabled: false })).status === 200);
+  check("bestaande samenvatting blijft leesbaar", (await dee.client.post(summaryPath)).data.cached === true);
+  check("nieuwe samenvatting dan niet meer", !!zip && (await admin.post(`/api/documents/${zip.id}/ai/summary`)).status === 403);
+}
+
 step("6. Afronden, vergrendeling en overnemen");
 let nextMeetingId;
 {
   check("afronden", (await admin.patch(`/api/meetings/${meetingId}`, { status: "afgerond" })).status === 200);
+  check("afronden beëindigt de vergadermodus", (await admin.get(`/api/meetings/${meetingId}/live`)).data.liveStartedAt === null);
   check("afgerond: agenda vergrendeld", (await admin.post(`/api/meetings/${meetingId}/items`, { title: "Te laat" })).status === 409);
   check("afgerond: titel vergrendeld", (await admin.patch(`/api/meetings/${meetingId}`, { title: "Anders" })).status === 409);
   check("afgerond: besluittekst vergrendeld", (await admin.patch(`/api/decisions/${decisionId}`, { text: "Herschreven" })).status === 409);

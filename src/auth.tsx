@@ -2,7 +2,14 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import { api, setApiOrganisation } from "./api";
 import type { Organisation, User } from "./lib";
 
-type Session = { user: User | null; orgName: string; setupNeeded: boolean; organisations: Organisation[] };
+type Session = {
+  user: User | null;
+  orgName: string;
+  setupNeeded: boolean;
+  organisations: Organisation[];
+  /** Het platform heeft toegang tot een taalmodel; per organisatie staat de assistent aan of uit. */
+  aiAvailable?: boolean;
+};
 type AuthValue = Session & {
   loading: boolean;
   /** De organisatie waarin de gebruiker nu werkt. */
