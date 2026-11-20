@@ -7,6 +7,7 @@ import { ProposalsModal, useAi } from "../components/Ai";
 import { AgendaPaste } from "../components/AgendaPaste";
 import { DocList, UploadButton } from "../components/Docs";
 import { ActionItem, ActionModal, DecisionModal } from "../components/Records";
+import { TranscriptCard } from "../components/Transcript";
 import {
   addMinutes,
   fmtDate,
@@ -758,6 +759,8 @@ export default function MeetingPage() {
           )}
         </section>
       )}
+
+      {isSec && meeting.status !== "concept" && <TranscriptCard meeting={meeting} items={items} canEdit={canEdit} onChanged={reload} />}
 
       {carriedActions.length > 0 && (
         <section className="card only-verslag">

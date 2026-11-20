@@ -235,11 +235,11 @@ export default function OrganisatiePage() {
           </div>
           <div className="card-body stack">
             <p>
-              De assistent vat stukken samen ter voorbereiding en stelt na afloop besluiten en acties voor uit de notulen. Hij legt zelf niets vast: de
-              secretaris beoordeelt elk voorstel en neemt het over of niet.
+              De assistent vat stukken samen ter voorbereiding, maakt concept-notulen uit het transcript van een opname en stelt besluiten en acties voor uit
+              de notulen. Hij legt zelf niets vast: de secretaris beoordeelt elk voorstel en neemt het over of niet.
             </p>
             <div className="notice">
-              <strong>Wat je hiermee toestaat.</strong> Notulen en stukken waarop iemand de assistent gebruikt, gaan voor verwerking naar een taalmodel
+              <strong>Wat je hiermee toestaat.</strong> Notulen, stukken en transcripten waarop iemand de assistent gebruikt, gaan voor verwerking naar een taalmodel
               (Claude van Anthropic, via Netlify). Dat gebeurt buiten dit platform en mogelijk buiten de EU. Netlify geeft aan de inhoud niet te bewaren. Zet de assistent
               niet aan als jullie stukken dat niet toelaten, bijvoorbeeld bij personeelsdossiers of medische gegevens.
             </div>

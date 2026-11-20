@@ -37,7 +37,7 @@ export async function requireAi(organisationId: string): Promise<void> {
 }
 
 type Request = {
-  kind: "voorstellen" | "samenvatting" | "test";
+  kind: "voorstellen" | "samenvatting" | "notulen" | "test";
   organisationId: string | null;
   userId: string;
   system: string;
@@ -45,6 +45,10 @@ type Request = {
   /** JSON-schema voor een gestructureerd antwoord. */
   schema?: Record<string, unknown>;
   maxTokens: number;
+  /** Standaard "low": vlot antwoord. Achtergrondwerk (een heel transcript) krijgt meer denkruimte. */
+  effort?: "low" | "medium" | "high";
+  /** Standaard ruim binnen de 60 seconden van een gewoon verzoek; achtergrondwerk mag langer. */
+  timeLimitMs?: number;
   /** Antwoord in de lokale testmodus. */
   fake: () => string;
 };
@@ -112,9 +116,10 @@ export async function ask(r: Request, raw = false): Promise<{ text: string; mode
     await record(r, "test", true);
     return { text: r.fake(), model: "test" };
   }
+  const limit = r.timeLimitMs ?? TIME_LIMIT_MS;
   try {
     // De gateway vult sleutel en adres in; zelf opnieuw proberen doen we niet (de tijd is daarvoor te krap).
-    const client = new Anthropic({ maxRetries: 0, timeout: TIME_LIMIT_MS });
+    const client = new Anthropic({ maxRetries: 0, timeout: limit });
     // Streamen houdt de verbinding levend bij een lang antwoord. De klok hieronder begrenst het geheel.
     const stream = client.messages.stream({
       model,
@@ -123,11 +128,11 @@ export async function ask(r: Request, raw = false): Promise<{ text: string; mode
       messages: [{ role: "user", content: r.content }],
       output_config: {
         // Samenvatten en overnemen uit notulen vraagt geen diep redeneerwerk, wel een vlot antwoord.
-        effort: "low",
+        effort: r.effort ?? "low",
         ...(r.schema ? { format: { type: "json_schema" as const, schema: r.schema } } : {}),
       },
     });
-    const timer = setTimeout(() => stream.abort(), TIME_LIMIT_MS);
+    const timer = setTimeout(() => stream.abort(), limit);
     let message: Anthropic.Message;
     try {
       message = await stream.finalMessage();

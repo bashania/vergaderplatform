@@ -12,7 +12,7 @@ export function useAi(): boolean {
 
 export const canSummarize = (d: Doc) => d.mime === "application/pdf" || d.mime.startsWith("text/") || /\.(pdf|txt|md|csv)$/i.test(d.name);
 
-function Thinking({ children }: { children: string }) {
+export function Thinking({ children }: { children: string }) {
   return (
     <div className="ai-wait" role="status">
       <span className="ai-dot" />
