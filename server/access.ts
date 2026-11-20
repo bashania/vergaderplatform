@@ -9,7 +9,7 @@ export type Role = "secretaris" | "deelnemer";
  * Verwacht $1 = user id, $2 = is beheerder. Beheerders mogen overal bij als secretaris.
  */
 export const ACC = `acc AS (
-  SELECT o.id AS overleg_id, o.name AS overleg_name, o.archived,
+  SELECT o.id AS overleg_id, o.name AS overleg_name, o.organisation, o.archived,
          CASE WHEN $2::boolean THEN 'secretaris' ELSE m.role END AS role
     FROM overleggen o
     LEFT JOIN memberships m ON m.overleg_id = o.id AND m.user_id = $1::uuid
@@ -44,6 +44,7 @@ export type MeetingRow = {
   id: string;
   overlegId: string;
   overlegName: string;
+  organisation: string;
   title: string;
   startsAt: string;
   durationMin: number;
@@ -65,7 +66,7 @@ export async function loadMeeting(
   { edit = false, allowClosed = false }: MeetingAccess = {},
 ): Promise<{ meeting: MeetingRow; role: Role }> {
   const meeting = await q1<MeetingRow>(
-    `SELECT mt.id, mt.overleg_id, o.name AS overleg_name, mt.title, mt.starts_at, mt.duration_min,
+    `SELECT mt.id, mt.overleg_id, o.name AS overleg_name, o.organisation, mt.title, mt.starts_at, mt.duration_min,
             mt.location, mt.online_url, mt.status, mt.notes
        FROM meetings mt JOIN overleggen o ON o.id = mt.overleg_id
       WHERE mt.id = $1`,

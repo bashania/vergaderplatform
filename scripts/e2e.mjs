@@ -99,12 +99,12 @@ step("1. Inrichting en inloggen");
 }
 
 step("2. Overleg, gebruikers en uitnodigingen");
-const overlegId = (await admin.post("/api/overleggen", { name: `MT-overleg ${RUN}`, description: "Tweewekelijks" })).data.id;
+const overlegId = (await admin.post("/api/overleggen", { name: `MT-overleg ${RUN}`, organisation: "Testbedrijf", description: "Tweewekelijks" })).data.id;
 check("overleg aangemaakt", !!overlegId);
 {
   const list = await admin.get("/api/overleggen");
   const o = list.data.overleggen.find((x) => x.id === overlegId);
-  check("overleg in lijst met rol secretaris", o?.role === "secretaris" && o.memberCount === 1, JSON.stringify(o));
+  check("overleg in lijst met rol secretaris en organisatie", o?.role === "secretaris" && o.memberCount === 1 && o.organisation === "Testbedrijf", JSON.stringify(o));
 }
 async function invite(name, email, memberships) {
   const created = await admin.post("/api/users", { name, email, memberships });
@@ -128,13 +128,41 @@ const bui = await invite("Bui Buitenstaander", `bui-${RUN}@test.example`, []);
   check("dubbel e-mailadres geweigerd", dup.status === 409);
   const notAdmin = await dee.client.get("/api/users");
   check("deelnemer mag gebruikerslijst niet zien", notAdmin.status === 403);
-  const dir = await dee.client.get("/api/users/directory");
-  check("deelnemer mag namenlijst niet zien", dir.status === 403);
+  const dir = await admin.get("/api/users/directory");
+  check("er is geen namenlijst van alle accounts meer", dir.status >= 400 && !dir.data?.users, JSON.stringify(dir));
   const d = await admin.get(`/api/overleggen/${overlegId}`);
   check("overlegdetail met 2 leden", d.data.members.length === 2 && d.data.role === "secretaris", JSON.stringify(d.data.members));
   check("buitenstaander ziet overleg niet", (await bui.client.get(`/api/overleggen/${overlegId}`)).status === 404);
   check("buitenstaander heeft lege lijst", (await bui.client.get("/api/overleggen")).data.overleggen.length === 0);
   check("deelnemer mag geen leden beheren", (await dee.client.put(`/api/overleggen/${overlegId}/members/${bui.id}`, { role: "deelnemer" })).status === 403);
+}
+
+step("2b. Meerdere organisaties: de secretaris nodigt zelf uit, zonder namenlijst");
+{
+  const overleg2 = (await admin.post("/api/overleggen", { name: `Commissie ${RUN}`, organisation: "Testcommissie" })).data.id;
+  const sec = await invite("Sec Secretaris", `sec-${RUN}@test.example`, [{ overlegId: overleg2, role: "secretaris" }]);
+  check("secretaris ziet geen gebruikerslijst", (await sec.client.get("/api/users")).status === 403);
+  check("secretaris ziet het andere overleg niet", (await sec.client.get(`/api/overleggen/${overlegId}`)).status === 404);
+  const noName = await sec.client.post(`/api/overleggen/${overleg2}/members`, { email: `nia-${RUN}@test.example` });
+  check("nieuwe persoon zonder naam: naam wordt gevraagd", noName.status === 422, JSON.stringify(noName));
+  const created = await sec.client.post(`/api/overleggen/${overleg2}/members`, { email: `Nia-${RUN}@Test.example`, name: "Nia Nieuw", role: "deelnemer" });
+  check("secretaris maakt account met uitnodigingslink", created.status === 200 && created.data.created === true && !!created.data.token, JSON.stringify(created));
+  const again = await sec.client.post(`/api/overleggen/${overleg2}/members/${created.data.userId}/invite`);
+  check("nieuwe link voor wie nog niet activeerde", again.status === 200 && again.data.purpose === "invite", JSON.stringify(again));
+  check("eerdere link vervalt", (await new Client().get(`/api/tokens/${created.data.token}`)).status === 404);
+  const nia = new Client();
+  check("uitgenodigde activeert account", (await nia.post(`/api/tokens/${again.data.token}`, { password: "nia-kiest-een-wachtwoord" })).status === 200);
+  const seen = await nia.get("/api/overleggen");
+  check("uitgenodigde ziet alleen het eigen overleg", seen.data.overleggen.length === 1 && seen.data.overleggen[0].id === overleg2 && seen.data.overleggen[0].organisation === "Testcommissie");
+  check("geen uitnodigingslink voor een actief account", (await sec.client.post(`/api/overleggen/${overleg2}/members/${created.data.userId}/invite`)).status === 403);
+  const existing = await sec.client.post(`/api/overleggen/${overleg2}/members`, { email: dee.email.toUpperCase() });
+  check("bestaand account wordt gekoppeld, zonder link", existing.status === 200 && existing.data.created === false && !existing.data.token, JSON.stringify(existing));
+  check("dubbel toevoegen geweigerd", (await sec.client.post(`/api/overleggen/${overleg2}/members`, { email: dee.email })).status === 409);
+  check("secretaris kan niemand toevoegen aan andermans overleg", (await sec.client.post(`/api/overleggen/${overlegId}/members`, { email: dee.email })).status === 404);
+  check("deelnemer kan niemand toevoegen", (await dee.client.post(`/api/overleggen/${overleg2}/members`, { email: `x-${RUN}@test.example`, name: "X" })).status === 403);
+  check("secretaris wijzigt organisatie van eigen overleg", (await sec.client.patch(`/api/overleggen/${overleg2}`, { organisation: "Testcommissie Noord" })).status === 200);
+  check("secretaris haalt deelnemer uit het overleg", (await sec.client.del(`/api/overleggen/${overleg2}/members/${dee.id}`)).status === 200);
+  check("verwijderde deelnemer ziet het overleg niet meer", (await dee.client.get(`/api/overleggen/${overleg2}`)).status === 404);
 }
 
 step("3. Vergadering en agenda");
@@ -160,7 +188,7 @@ for (const [title, kind, durationMin] of [["Opening en mededelingen", "informati
   check("notulen opslaan", (await admin.patch(`/api/items/${itemIds[1]}`, { notes: "Besproken: zoekwoord-xyzzy in de notulen." })).status === 200);
   check("publiceren", (await admin.patch(`/api/meetings/${meetingId}`, { status: "gepubliceerd" })).status === 200);
   const md = await dee.client.get(`/api/meetings/${meetingId}`);
-  check("deelnemer ziet gepubliceerde vergadering", md.status === 200 && md.data.role === "deelnemer" && md.data.items.length === 3);
+  check("deelnemer ziet gepubliceerde vergadering met organisatie", md.status === 200 && md.data.role === "deelnemer" && md.data.items.length === 3 && md.data.meeting.organisation === "Testbedrijf");
   check("deelnemer mag agenda niet wijzigen", (await dee.client.post(`/api/meetings/${meetingId}/items`, { title: "Stiekem" })).status === 403);
   check("deelnemer mag notulen niet wijzigen", (await dee.client.patch(`/api/items/${itemIds[0]}`, { notes: "x" })).status === 403);
   check("buitenstaander ziet vergadering niet", (await bui.client.get(`/api/meetings/${meetingId}`)).status === 404);

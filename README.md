@@ -5,6 +5,8 @@ Agenda's, stukken, besluiten en acties op één plek, zodat alle deelnemers alti
 ## Wat het doet
 
 - **Overleggen**: elk gremium (MT, bestuur, projectoverleg) heeft eigen deelnemers, vergaderingen, besluitenlijst, actielijst en vaste stukken.
+- **Meerdere organisaties**: elk overleg hoort bij een organisatie (bedrijf, opleiding, commissie). Het overzicht groepeert daarop en de naam staat op afgedrukte agenda's. Deelnemers zien alleen de overleggen waar ze zelf in zitten.
+- **Uitnodigen**: de secretaris voegt deelnemers toe op e-mailadres. Bestaat het account al, dan wordt het gekoppeld; anders ontstaat een uitnodigingslink. Er is bewust geen lijst van alle accounts.
 - **Vergaderingen**: agenda met agendapunten (ter informatie, bespreking of besluitvorming), stukken per agendapunt, notulen, aanwezigheid.
 - **Besluiten**: automatisch doorlopend genummerd per overleg per jaar (2026-001, 2026-002, ...).
 - **Acties**: actiehouder en deadline; de actiehouder meldt zelf af. Open acties komen terug op de actielijst van de volgende vergadering.
@@ -21,7 +23,7 @@ Agenda's, stukken, besluiten en acties op één plek, zodat alle deelnemers alti
 | Stukken | Netlify Blobs, in delen van 3,5 MB (limiet van Netlify Functions) |
 | Login | Eigen accounts: scrypt-wachtwoorden, sessiecookie, eenmalige uitnodigings- en resetlinks |
 
-Het platform verstuurt zelf geen e-mail. Uitnodigings- en resetlinks kopieert of mailt de beheerder zelf.
+Het platform verstuurt zelf geen e-mail. Uitnodigingslinks kopieert of mailt de secretaris of beheerder zelf; resetlinks (wachtwoord vergeten) maakt alleen de beheerder.
 
 ## Lokaal draaien
 

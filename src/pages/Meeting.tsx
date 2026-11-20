@@ -362,13 +362,14 @@ export default function MeetingPage() {
   return (
     <div className="page">
       <div className="print-only">
-        <strong>{[orgName, meeting.overlegName].filter(Boolean).join(" · ")}</strong>
+        <strong>{[meeting.organisation || orgName, meeting.overlegName].filter(Boolean).join(" · ")}</strong>
       </div>
 
       <div className="page-head">
         <div>
           <div className="crumb no-print">
-            <Link to="/overleggen">Overleggen</Link> › <Link to={`/overleggen/${meeting.overlegId}`}>{meeting.overlegName}</Link>
+            <Link to="/overleggen">Overleggen</Link> › {meeting.organisation && `${meeting.organisation} › `}
+            <Link to={`/overleggen/${meeting.overlegId}`}>{meeting.overlegName}</Link>
           </div>
           <div className="row">
             <h1>{meeting.title}</h1>

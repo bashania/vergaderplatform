@@ -206,7 +206,7 @@ route.get("/api/dashboard", async (c) => {
   const [upcoming, myActions, recentDecisions, recentDocuments] = await Promise.all([
     q(
       `WITH ${ACC}
-       SELECT mt.id, mt.title, mt.starts_at, mt.duration_min, mt.location, mt.status, mt.overleg_id, acc.overleg_name,
+       SELECT mt.id, mt.title, mt.starts_at, mt.duration_min, mt.location, mt.status, mt.overleg_id, acc.overleg_name, acc.organisation,
               (SELECT count(*)::int FROM agenda_items ai WHERE ai.meeting_id = mt.id) AS item_count,
               (SELECT count(*)::int FROM documents d WHERE d.meeting_id = mt.id AND d.status = 'ready') AS document_count,
               (SELECT status FROM attendance at WHERE at.meeting_id = mt.id AND at.user_id = $1::uuid) AS my_attendance

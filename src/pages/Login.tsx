@@ -120,7 +120,7 @@ export function SetupPage() {
             <input className="input" required value={code} onChange={(e) => setCode(e.target.value)} />
           </Field>
         )}
-        <Field label="Naam organisatie (optioneel)" hint="Staat in het menu en op afgedrukte agenda's. Later te wijzigen.">
+        <Field label="Naam onder de titel (optioneel)" hint="Bijvoorbeeld je eigen naam. Bij welke organisatie een overleg hoort, stel je per overleg in.">
           <input className="input" maxLength={120} autoComplete="organization" value={orgName} onChange={(e) => setOrgName(e.target.value)} />
         </Field>
         <Field label="Je naam">

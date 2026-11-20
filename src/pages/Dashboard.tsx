@@ -37,7 +37,7 @@ export function MeetingRow({ m, past }: { m: MeetingSummary; past?: boolean }) {
           {m.myAttendance === "afwezig" && <span className="badge warm">Afgemeld</span>}
         </div>
         <div className="meta">
-          {m.overlegName && <span>{m.overlegName}</span>}
+          {m.overlegName && <span>{[m.organisation, m.overlegName].filter(Boolean).join(" · ")}</span>}
           <span>
             <Icon name="clock" size={14} />
             {fmtDate(m.startsAt)}, {timeRange(m.startsAt, m.durationMin)}

@@ -2,8 +2,9 @@ import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth, useUser } from "../auth";
+import { LinkModal, type LinkInfo } from "../components/LinkModal";
 import { fmtDateTime, type Overleg, type Role } from "../lib";
-import { Button, CopyBox, Empty, Field, Form, Icon, Loader, Modal, useLoad, useRun } from "../ui";
+import { Button, Empty, Field, Form, Loader, Modal, useLoad, useRun } from "../ui";
 
 type AdminUser = {
   id: string;
@@ -17,42 +18,11 @@ type AdminUser = {
   memberships: { overlegId: string; overlegName: string; role: Role }[];
 };
 
-type LinkInfo = { name: string; email: string; token: string; purpose: "invite" | "reset"; validDays: number };
-
 const TABS = [
   ["gebruikers", "Gebruikers"],
   ["instellingen", "Instellingen"],
   ["logboek", "Logboek"],
 ] as const;
-
-/** Toont de eenmalige link. Er wordt niets automatisch gemaild: de beheerder verstuurt de link zelf. */
-function LinkModal({ link, onClose }: { link: LinkInfo; onClose: () => void }) {
-  const user = useUser();
-  const url = `${window.location.origin}/welkom#${link.token}`;
-  const invite = link.purpose === "invite";
-  const subject = invite ? "Uitnodiging voor het vergaderplatform" : "Nieuw wachtwoord voor het vergaderplatform";
-  const body = invite
-    ? `Beste ${link.name},\n\nJe hebt toegang gekregen tot het vergaderplatform, met de agenda's, stukken, besluiten en acties van onze overleggen.\n\nKies via deze link je wachtwoord:\n${url}\n\nDe link is ${link.validDays} dagen geldig en werkt één keer.\n\nMet vriendelijke groet,\n${user.name}`
-    : `Beste ${link.name},\n\nVia deze link kies je een nieuw wachtwoord voor het vergaderplatform:\n${url}\n\nDe link is ${link.validDays} dagen geldig en werkt één keer.\n\nMet vriendelijke groet,\n${user.name}`;
-  return (
-    <Modal title={invite ? "Uitnodigingslink" : "Link voor nieuw wachtwoord"} onClose={onClose}>
-      <div className="stack">
-        <p>
-          Stuur deze link naar <strong>{link.name}</strong> ({link.email}). De link is {link.validDays} dagen geldig en werkt één keer.
-        </p>
-        <CopyBox value={url} />
-        <div className="notice">Het platform verstuurt zelf geen e-mail. Deze link is alleen nu zichtbaar; maak een nieuwe als je hem kwijt bent.</div>
-        <div className="form-foot">
-          <a className="btn secondary" href={`mailto:${link.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`}>
-            <Icon name="mail" size={17} />
-            Open in mijn mailprogramma
-          </a>
-          <Button onClick={onClose}>Klaar</Button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
 
 function NewUser({ overleggen, onClose, onCreated }: { overleggen: Overleg[]; onClose: () => void; onCreated: (link: LinkInfo) => void }) {
   const [name, setName] = useState("");
@@ -273,7 +243,7 @@ function Settings() {
     <>
       <section className="card">
         <div className="card-head">
-          <h2 className="section-title">Organisatie</h2>
+          <h2 className="section-title">Weergave</h2>
         </div>
         <div className="card-body">
           <Form
@@ -282,8 +252,11 @@ function Settings() {
               await refresh();
             }}
           >
-            <Field label="Naam organisatie" hint="Staat in het menu, op het inlogscherm en op afgedrukte agenda's.">
-              <input className="input" required maxLength={120} value={name} onChange={(e) => setName(e.target.value)} />
+            <Field
+              label="Naam onder de titel (optioneel)"
+              hint="Staat in het menu en op het inlogscherm, bijvoorbeeld je eigen naam. Bij welke organisatie een overleg hoort, stel je per overleg in."
+            >
+              <input className="input" maxLength={120} value={name} onChange={(e) => setName(e.target.value)} />
             </Field>
           </Form>
         </div>

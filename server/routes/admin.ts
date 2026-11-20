@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createUserToken } from "../auth";
 import { dbHost, q, q1 } from "../db";
-import { bad, email, env, forbidden, HttpError, json, notFound, oneOf, str, uuid } from "../http";
+import { bad, email, env, HttpError, json, notFound, oneOf, optStr, str, uuid } from "../http";
 import { store } from "../files";
 import { route } from "../router";
 
@@ -63,16 +63,6 @@ route.get(
   },
   { admin: true },
 );
-
-/** Namenlijst om leden aan een overleg toe te voegen (voor beheerders en secretarissen). */
-route.get("/api/users/directory", async (c) => {
-  if (!c.user.isAdmin) {
-    const sec = await q1(`SELECT 1 AS x FROM memberships WHERE user_id = $1 AND role = 'secretaris' LIMIT 1`, [c.user.id]);
-    if (!sec) throw forbidden();
-  }
-  const users = await q(`SELECT id, name, email FROM users WHERE active ORDER BY lower(name)`);
-  return { users };
-});
 
 route.post(
   "/api/users",
@@ -163,7 +153,7 @@ route.put(
   "/api/settings",
   async (c) => {
     const b = await c.body();
-    const orgName = str(b.orgName, "Naam organisatie", { max: 120 });
+    const orgName = optStr(b.orgName, "Naam", 120);
     await q(
       `INSERT INTO settings (key, value) VALUES ('orgName', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
       [orgName],
