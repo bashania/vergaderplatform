@@ -6,7 +6,7 @@ import { CHUNK_SIZE, chunkKey, deleteDocumentBlobs, fileHeaders, MAX_FILE_SIZE, 
 import { bad, forbidden, HttpError, int, notFound, optUuid, str, uuid } from "../http";
 import { route } from "../router";
 
-type Doc = {
+export type Doc = {
   id: string;
   overlegId: string;
   meetingId: string | null;
@@ -26,7 +26,7 @@ const DOC_COLUMNS = `id, overleg_id, meeting_id, agenda_item_id, name, mime, siz
  * view: iedereen die de vergadering/het overleg mag zien.
  * manage: de secretaris, of de uploader zolang de vergadering niet is afgerond.
  */
-async function loadDoc(user: User, id: string, mode: "view" | "manage"): Promise<Doc> {
+export async function loadDoc(user: User, id: string, mode: "view" | "manage"): Promise<Doc> {
   const doc = await q1<Doc>(`SELECT ${DOC_COLUMNS} FROM documents WHERE id = $1`, [id]);
   if (!doc) throw notFound("Stuk niet gevonden.");
   if (doc.meetingId) {

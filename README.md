@@ -14,6 +14,9 @@ Agenda's, stukken, besluiten en acties op één plek, zodat alle deelnemers alti
 - **Passkeys**: inloggen met vingerafdruk, gezicht of de pincode van het apparaat, zonder wachtwoord. Bij een uitnodiging is een passkey de eerste keuze; een wachtwoord blijft mogelijk.
 - **Tweestapsverificatie per organisatie**: een beheerder kan een passkey verplicht stellen. Wie met alleen een wachtwoord is ingelogd, komt die organisatie dan niet in.
 - **Status**: concept (alleen secretaris) → gepubliceerd (deelnemers zien alles) → afgerond (vergrendeld).
+- **Vergadermodus**: tijdens het overleg één scherm met het actuele agendapunt, de stukken, de klok (besteed tegenover gepland) en de notulen, die vanzelf worden opgeslagen. Deelnemers die het scherm openen, lopen zonder verversen mee met de secretaris. De bestede tijd per punt komt in het verslag.
+- **AI-assistent** (per organisatie aan te zetten): vat een pdf of tekstbestand samen ter voorbereiding en stelt na afloop besluiten en acties voor uit de notulen. De assistent legt zelf niets vast; de secretaris neemt een voorstel over of niet.
+- **Installeerbaar**: op telefoon, tablet of computer als app op het beginscherm te zetten.
 
 ## Rollen
 
@@ -33,6 +36,7 @@ Agenda's, stukken, besluiten en acties op één plek, zodat alle deelnemers alti
 | Gegevens | Netlify Database, Postgres (`netlify/database/migrations/`) |
 | Stukken | Netlify Blobs, in delen van 3,5 MB (limiet van Netlify Functions) |
 | Login | Eigen accounts: scrypt-wachtwoorden, sessiecookie, eenmalige uitnodigings- en resetlinks |
+| AI-assistent | Claude via Netlify AI Gateway (`server/ai.ts`), zonder eigen API-sleutel |
 
 De gekozen organisatie gaat mee in de header `x-organisation` en bepaalt wat de overzichten tonen. Toegang tot een overleg, vergadering of stuk wordt altijd op het object zelf gecontroleerd (`server/access.ts`), nooit op basis van die header.
 
@@ -44,6 +48,20 @@ De gekozen organisatie gaat mee in de header `x-organisation` en bepaalt wat de 
 - Apparaat kwijt: de platformbeheerder wist de passkeys van het account en stuurt een resetlink.
 - Een passkey is gebonden aan het webadres waarop hij is aangemaakt. Verhuist het platform naar een eigen domein, zet dan eerst `RP_ID` en laat mensen pas daarna passkeys aanmaken: passkeys van het oude adres werken op het nieuwe niet.
 
+### Vergadermodus
+
+- De stand (bezig of niet, het actuele punt) staat bij de vergadering. Het scherm vraagt die elke 4 seconden op zolang het zichtbaar is; alleen als er iets is gewijzigd, haalt het de hele vergadering opnieuw op.
+- Alleen de secretaris of beheerder start, wisselt van punt en beëindigt. Afronden of terugzetten naar concept beëindigt de vergadermodus vanzelf.
+
+### AI-assistent
+
+- Staat per organisatie uit tot een beheerder van die organisatie hem aanzet onder Toegang en beheer. Notulen en stukken waarop iemand de assistent gebruikt, gaan dan voor verwerking naar een taalmodel buiten het platform, mogelijk buiten de EU. Weeg dat af bij vertrouwelijke stukken.
+- Netlify AI Gateway zet de toegang tot het model op de server klaar; het verbruik gaat van de Netlify-credits van het team. Er hoeft geen sleutel beheerd te worden. De gateway werkt na de eerste productie-deploy en alleen op een Netlify-abonnement met credits.
+- Een samenvatting wordt één keer gemaakt en daarna bewaard bij het stuk. Samenvatten kan voor pdf (tot 12 MB) en tekstbestanden; Word en Excel eerst opslaan als pdf.
+- Limieten tegen onbedoeld verbruik: 30 verzoeken per persoon per uur en 300 per organisatie per dag (`server/ai.ts`).
+- Eén verzoek moet binnen 60 seconden klaar zijn (limiet van Netlify Functions). Duurt het langer, dan krijgt de gebruiker een melding.
+- Controleren of de koppeling werkt: Platformbeheer, Instellingen, AI-assistent, knop "Test de koppeling".
+
 Het platform verstuurt zelf geen e-mail. Uitnodigingslinks kopieert of mailt de secretaris of beheerder zelf; resetlinks (wachtwoord vergeten) maakt alleen de platformbeheerder.
 
 ## Lokaal draaien
@@ -53,7 +71,7 @@ npm install
 ```
 
 ```bash
-echo "SETUP_CODE=lokale-testcode" > .env
+printf "SETUP_CODE=lokale-testcode\nAI_FAKE=1\n" > .env
 ```
 
 ```bash
@@ -67,6 +85,8 @@ npm run db:migrate
 ```
 
 Open daarna http://localhost:8888/#lokale-testcode om het eerste beheerdersaccount en de eerste organisatie aan te maken.
+
+`AI_FAKE=1` werkt alleen lokaal: de AI-assistent geeft dan vaste antwoorden (`server/ai-fake.ts`) in plaats van een taalmodel aan te roepen. Zo draaien de schermen en de tests zonder gateway.
 
 ## Testen
 
@@ -84,6 +104,17 @@ De herkenning van geplakte agenda's:
 npm run test:parse
 ```
 
+## Instructiefilm opnieuw opnemen
+
+De film wordt opgenomen door een script dat met fictieve gegevens door de schermen loopt. Na een wijziging aan de schermen is hij zo opnieuw te maken. Nodig: Playwright met Chromium en ffmpeg.
+
+1. Start de lokale server met een lege database en `scripts/film/demo.env` als `.env`, en draai de migraties.
+2. `node scripts/film/seed-demo.cjs > demo.json` vult de demogegevens.
+3. `REC=1 node scripts/film/film.cjs uit "$(cat demo.json)"` neemt de beelden op (zonder `REC=1`: alleen schermafbeeldingen, als snelle controle).
+4. `node scripts/film/montage.cjs uit instructiefilm.mp4` maakt de film met ondertitels.
+
+De samenvatting en de voorstellen in de film komen uit de lokale testmodus, niet uit het taalmodel.
+
 ## Instellingen (Netlify-omgevingsvariabelen)
 
 | Variabele | Betekenis |
@@ -91,6 +122,7 @@ npm run test:parse
 | `SETUP_CODE` | Eenmalige code waarmee de eerste platformbeheerder zijn account aanmaakt. Daarna zonder functie; verwijder de variabele na de inrichting. |
 | `RP_ID` | Domein waaraan passkeys worden gebonden. Standaard de hostnaam van de site. Alleen zetten bij een eigen domein, en vóórdat er passkeys zijn aangemaakt. |
 | `BLOB_REGION` | Regio van de stukken (standaard `eu-central-1`). Niet wijzigen na ingebruikname: bestaande stukken verhuizen niet mee. |
+| `AI_MODEL` | Model van de AI-assistent (standaard `claude-opus-5-5`). Alleen een actueel Claude-model dat Netlify AI Gateway aanbiedt. |
 
 ## Schemawijzigingen
 

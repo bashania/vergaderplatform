@@ -31,9 +31,15 @@ export function MeetingRow({ m, past }: { m: MeetingSummary; past?: boolean }) {
           <Link className="title" to={`/vergaderingen/${m.id}`}>
             {m.title}
           </Link>
+          {m.live && (
+            <Link className="live-badge" to={`/vergaderingen/${m.id}/live`}>
+              <span className="live-pulse" />
+              Nu bezig: meelopen
+            </Link>
+          )}
           {m.status === "concept" && <span className="badge warm">Concept</span>}
           {m.status === "afgerond" && <span className="badge">Afgerond</span>}
-          {soon && <span className="badge accent">{soon}</span>}
+          {soon && !m.live && <span className="badge accent">{soon}</span>}
           {m.myAttendance === "afwezig" && <span className="badge warm">Afgemeld</span>}
         </div>
         <div className="meta">

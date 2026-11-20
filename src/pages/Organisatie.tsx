@@ -17,6 +17,7 @@ type Person = {
   overleggen: { id: string; name: string; role: Role }[];
 };
 
+type AiInfo = { enabled: boolean; available: boolean; month: { calls: number; inputTokens: number; outputTokens: number } };
 type Added = { name: string; email: string; created: boolean } & Partial<LinkInfo>;
 
 /** Beheer van één organisatie: wie mag erin, en wie beheert haar. Alleen voor beheerders van die organisatie. */
@@ -31,6 +32,7 @@ export default function OrganisatiePage() {
   const [email, setEmail] = useState("");
   const [personName, setPersonName] = useState("");
   const [link, setLink] = useState<LinkInfo | null>(null);
+  const ai = useLoad<AiInfo>(org?.role === "beheerder" ? `${base}/ai` : null);
 
   if (!org || org.role !== "beheerder") return <Navigate to="/" replace />;
 
@@ -222,6 +224,52 @@ export default function OrganisatiePage() {
               <div className="notice">
                 Log zelf eerst in met een passkey om dit te wijzigen. Zo sluit je jezelf niet buiten. Een passkey maak je aan onder <Link to="/account">Mijn account</Link>.
               </div>
+            )}
+          </div>
+        </section>
+
+        <section className="card">
+          <div className="card-head">
+            <h2 className="section-title">AI-assistent</h2>
+            {org.aiEnabled ? <span className="badge accent">Aan</span> : <span className="badge">Uit</span>}
+          </div>
+          <div className="card-body stack">
+            <p>
+              De assistent vat stukken samen ter voorbereiding en stelt na afloop besluiten en acties voor uit de notulen. Hij legt zelf niets vast: de
+              secretaris beoordeelt elk voorstel en neemt het over of niet.
+            </p>
+            <div className="notice">
+              <strong>Wat je hiermee toestaat.</strong> Notulen en stukken waarop iemand de assistent gebruikt, gaan voor verwerking naar een taalmodel
+              (Claude van Anthropic, via Netlify). Dat gebeurt buiten dit platform en mogelijk buiten de EU. Netlify geeft aan de inhoud niet te bewaren. Zet de assistent
+              niet aan als jullie stukken dat niet toelaten, bijvoorbeeld bij personeelsdossiers of medische gegevens.
+            </div>
+            {ai.data && !ai.data.available ? (
+              <p className="small muted">Op dit platform is geen taalmodel beschikbaar. De platformbeheerder kan dat controleren onder Platformbeheer, Instellingen.</p>
+            ) : (
+              <>
+                {ai.data && org.aiEnabled && (
+                  <p className="small muted">
+                    Deze maand: {ai.data.month.calls} {ai.data.month.calls === 1 ? "verzoek" : "verzoeken"} aan de assistent. Per persoon geldt een limiet
+                    van 30 per uur, per organisatie 300 per dag.
+                  </p>
+                )}
+                <div>
+                  <Button
+                    variant={org.aiEnabled ? "secondary" : "primary"}
+                    icon="spark"
+                    onClick={async () => {
+                      const next = !org.aiEnabled;
+                      if (next && !window.confirm(`AI-assistent aanzetten voor ${org.name}? Notulen en stukken waarop hij wordt gebruikt, gaan dan naar een taalmodel buiten dit platform.`)) return;
+                      if (await run(() => api(base, { method: "PATCH", body: { aiEnabled: next } }), next ? "AI-assistent staat aan" : "AI-assistent staat uit")) {
+                        await refresh();
+                        void ai.reload();
+                      }
+                    }}
+                  >
+                    {org.aiEnabled ? "AI-assistent uitzetten" : "AI-assistent aanzetten"}
+                  </Button>
+                </div>
+              </>
             )}
           </div>
         </section>

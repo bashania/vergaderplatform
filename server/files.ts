@@ -22,6 +22,8 @@ export function setDeployContext(context: string | undefined) {
   deployContext = context || "production";
 }
 
+export const currentDeployContext = () => deployContext;
+
 /**
  * Site-brede Blobs-stores zijn gedeeld over alle deploy-contexten. Previews en lokaal
  * krijgen daarom een eigen store, zodat testen nooit productiestukken raakt.

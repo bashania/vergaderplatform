@@ -8,6 +8,7 @@ import {
   sha256,
   verifyPassword,
 } from "../auth";
+import { aiAvailable } from "../ai";
 import { q, q1 } from "../db";
 import { bad, email, env, HttpError, notFound, optStr, str } from "../http";
 import { route } from "../router";
@@ -15,7 +16,7 @@ import { route } from "../router";
 /** Organisaties waar de gebruiker bij mag: als beheerder, of via deelname aan een overleg. */
 function myOrganisations(userId: string) {
   return q(
-    `SELECT org.id, org.name, org.require_passkey, CASE WHEN adm.is_admin THEN 'beheerder' ELSE 'lid' END AS role
+    `SELECT org.id, org.name, org.require_passkey, org.ai_enabled, CASE WHEN adm.is_admin THEN 'beheerder' ELSE 'lid' END AS role
        FROM organisations org
        CROSS JOIN LATERAL (
          SELECT EXISTS (SELECT 1 FROM organisation_admins a WHERE a.organisation_id = org.id AND a.user_id = $1) AS is_admin
@@ -47,7 +48,7 @@ route.get(
     ]);
     // strong = deze sessie is met een passkey ingelogd; alleen die opent organisaties met passkey-eis.
     const user = c.user ? { ...c.user, hasPassword: account?.hasPassword ?? false, passkeys: account?.passkeys ?? 0 } : null;
-    return { user, orgName: org?.value ?? "", setupNeeded: !c.user && !anyUser, organisations };
+    return { user, orgName: org?.value ?? "", setupNeeded: !c.user && !anyUser, organisations, aiAvailable: !!c.user && aiAvailable() };
   },
   { public: true },
 );

@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { countItems, parseAgenda } from "../agendaParse";
 import { api, saveBlob } from "../api";
 import { useAuth, useUser } from "../auth";
+import { ProposalsModal, useAi } from "../components/Ai";
 import { AgendaPaste } from "../components/AgendaPaste";
 import { DocList, UploadButton } from "../components/Docs";
 import { ActionItem, ActionModal, DecisionModal } from "../components/Records";
@@ -33,6 +34,7 @@ type ModalState =
   | { type: "import" }
   | { type: "decision"; itemId: string | null; decision?: Decision }
   | { type: "action"; itemId: string | null; action?: Action }
+  | { type: "proposals" }
   | null;
 
 // ---------- formulieren ----------
@@ -295,6 +297,7 @@ export default function MeetingPage() {
   const { ensureOrg } = useAuth();
   const navigate = useNavigate();
   const run = useRun();
+  const ai = useAi();
   const { data, loading, error, reload } = useLoad<MeetingDetail>(`/api/meetings/${id}`);
   const [modal, setModal] = useState<ModalState>(null);
   const [showPresence, setShowPresence] = useState(false);
@@ -330,6 +333,8 @@ export default function MeetingPage() {
   const childrenOf = (parentId: string) => items.filter((i) => i.parentId === parentId);
   const times = itemTimes(meeting.startsAt, tops.flatMap((t) => [t, ...childrenOf(t.id)]));
   const planned = items.reduce((sum, it) => sum + (it.durationMin ?? 0), 0);
+  const isLive = !!meeting.liveStartedAt;
+  const hasNotes = !!meeting.notes.trim() || items.some((it) => it.notes.trim());
 
   const me = members.find((m) => m.id === user.id);
   const present = members.filter((m) => m.attendance === "aanwezig").length;
@@ -424,7 +429,7 @@ export default function MeetingPage() {
       <div className="spread" style={{ alignItems: "flex-start" }}>
         <div className="grow">
           {parent ? <strong>{it.title}</strong> : <h3>{it.title}</h3>}
-          {(it.kind || times.get(it.id) || it.durationMin || it.presenter) && (
+          {(it.kind || times.get(it.id) || it.durationMin || it.presenter || it.spentSec >= 60) && (
             <div className="meta">
               {it.kind && <span className={`badge ${labelTone(it.kind)}`}>{it.kind}</span>}
               {times.get(it.id) && (
@@ -434,6 +439,7 @@ export default function MeetingPage() {
                 </span>
               )}
               {!times.get(it.id) && it.durationMin && <span>{it.durationMin} min</span>}
+              {it.spentSec >= 60 && <span className="only-verslag">Besteed: {Math.round(it.spentSec / 60)} min</span>}
               {it.presenter && <span>Inbrenger: {it.presenter}</span>}
             </div>
           )}
@@ -552,6 +558,23 @@ export default function MeetingPage() {
             Publiceren
           </Button>
         )}
+        {meeting.status === "gepubliceerd" && (isSec || isLive) && (
+          <Link className="btn" to={`/vergaderingen/${meeting.id}/live`}>
+            <Icon name={isSec && !isLive ? "play" : "eye"} size={17} />
+            {isLive ? (isSec ? "Naar de vergadermodus" : "Meelopen met de vergadering") : "Vergadermodus"}
+          </Link>
+        )}
+        {canEdit && ai && (
+          <Button
+            variant="secondary"
+            icon="spark"
+            disabled={!hasNotes}
+            title={hasNotes ? "Laat de AI-assistent besluiten en acties voorstellen uit de notulen" : "Leg eerst notulen vast"}
+            onClick={() => setModal({ type: "proposals" })}
+          >
+            Voorstellen uit notulen
+          </Button>
+        )}
         {isSec && meeting.status === "gepubliceerd" && (
           <>
             <a className="btn secondary" href={mailto}>
@@ -559,6 +582,7 @@ export default function MeetingPage() {
               Deelnemers mailen
             </a>
             <Button
+              variant={isLive ? "secondary" : "primary"}
               icon="lock"
               onClick={() => {
                 if (window.confirm("Vergadering afronden? Agenda, notulen en besluiten worden vergrendeld. Acties kunnen nog wel worden afgemeld.")) {
@@ -594,6 +618,17 @@ export default function MeetingPage() {
         )}
       </div>
 
+      {isLive && (
+        <div className="notice accent live-banner no-print">
+          <span>
+            <strong>De vergadering is bezig.</strong> In de vergadermodus zie je het actuele punt, de stukken en de tijd.
+          </span>
+          <Link className="btn small" to={`/vergaderingen/${meeting.id}/live`}>
+            <Icon name="eye" size={16} />
+            {isSec ? "Naar de vergadermodus" : "Meelopen"}
+          </Link>
+        </div>
+      )}
       {meeting.status === "concept" && (
         <div className="notice warm no-print">
           <strong>Concept.</strong> Alleen de secretaris ziet deze vergadering. Publiceer om agenda en stukken met de deelnemers te delen.
@@ -795,6 +830,7 @@ export default function MeetingPage() {
       {modal?.type === "action" && (
         <ActionModal meetingId={meeting.id} agendaItemId={modal.itemId} action={modal.action} members={members} onClose={() => setModal(null)} onSaved={saved} />
       )}
+      {modal?.type === "proposals" && <ProposalsModal meetingId={meeting.id} items={items} members={members} onClose={() => setModal(null)} onSaved={saved} />}
     </div>
   );
 }

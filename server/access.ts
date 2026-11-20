@@ -107,6 +107,10 @@ export type MeetingRow = {
   status: "concept" | "gepubliceerd" | "afgerond";
   description: string;
   notes: string;
+  /** Gevuld zolang de vergadering bezig is (vergadermodus). */
+  liveStartedAt: string | null;
+  liveItemId: string | null;
+  liveItemStartedAt: string | null;
 };
 
 type MeetingAccess = { edit?: boolean; allowClosed?: boolean };
@@ -122,7 +126,8 @@ export async function loadMeeting(
 ): Promise<{ meeting: MeetingRow; role: Role }> {
   const meeting = await q1<MeetingRow>(
     `SELECT mt.id, mt.overleg_id, o.name AS overleg_name, o.organisation_id, org.name AS organisation_name,
-            mt.title, mt.starts_at, mt.duration_min, mt.location, mt.online_url, mt.status, mt.description, mt.notes
+            mt.title, mt.starts_at, mt.duration_min, mt.location, mt.online_url, mt.status, mt.description, mt.notes,
+            mt.live_started_at, mt.live_item_id, mt.live_item_started_at
        FROM meetings mt
        JOIN overleggen o ON o.id = mt.overleg_id
        JOIN organisations org ON org.id = o.organisation_id

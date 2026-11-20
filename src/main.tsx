@@ -15,6 +15,7 @@ import ActiesPage from "./pages/Acties";
 import BeheerPage from "./pages/Beheer";
 import BesluitenPage from "./pages/Besluiten";
 import DashboardPage from "./pages/Dashboard";
+import LivePage from "./pages/Live";
 import { LoginPage, SetupPage, WelcomePage } from "./pages/Login";
 import MeetingPage from "./pages/Meeting";
 import OrganisatiePage from "./pages/Organisatie";
@@ -39,6 +40,8 @@ function App() {
     <Routes>
       {/* Uitnodigings- en resetlinks werken altijd, ook als er iemand anders is ingelogd. */}
       <Route path="/welkom" element={<WelcomePage />} />
+      {/* Vergadermodus: schermvullend, zonder menu. */}
+      {user && <Route path="vergaderingen/:id/live" element={<LivePage />} />}
       {user ? (
         <Route element={<Layout />}>
           <Route element={<RequireOrganisation />}>

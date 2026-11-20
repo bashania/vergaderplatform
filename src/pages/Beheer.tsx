@@ -403,6 +403,7 @@ function Users() {
 
 // ---------- instellingen en logboek ----------
 
+type AiTest = { ok: boolean; model: string; ms?: number; reply?: string; error?: string };
 type Diagnostics = { functionRegion: string; dbHost: string; dbRoundTripMs: number; dbVersion: string; blobRegion: string };
 
 function Settings() {
@@ -411,6 +412,8 @@ function Settings() {
   const toast = useToast();
   const [name, setName] = useState(orgName);
   const [diag, setDiag] = useState<Diagnostics | null>(null);
+  const [aiTest, setAiTest] = useState<AiTest | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
   return (
     <>
       <section className="card">
@@ -465,6 +468,40 @@ function Settings() {
           ) : (
             <p className="muted">Laat zien in welke regio de server draait en waar de gegevens en stukken staan.</p>
           )}
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="card-head">
+          <h2 className="section-title">AI-assistent</h2>
+          <Button
+            variant="secondary"
+            small
+            busy={aiBusy}
+            onClick={async () => {
+              setAiBusy(true);
+              await run(async () => setAiTest(await api<AiTest>("/api/admin/ai/test", { method: "POST", body: {} })));
+              setAiBusy(false);
+            }}
+          >
+            {aiBusy ? "Testen…" : "Test de koppeling"}
+          </Button>
+        </div>
+        <div className="card-body stack">
+          <p>
+            De assistent vat stukken samen en stelt besluiten en acties voor uit de notulen. Hij staat per organisatie uit, tot een beheerder van die
+            organisatie hem aanzet onder Toegang en beheer. De test hieronder stuurt één kort verzoek naar het taalmodel en kost een fractie van een cent.
+          </p>
+          {aiTest &&
+            (aiTest.ok ? (
+              <div className="notice accent">
+                <strong>De koppeling werkt.</strong> Model {aiTest.model}, antwoord in {aiTest.ms} ms.
+              </div>
+            ) : (
+              <div className="form-error" role="alert" style={{ overflowWrap: "anywhere" }}>
+                <strong>De koppeling werkt niet.</strong> {aiTest.error} (model: {aiTest.model})
+              </div>
+            ))}
         </div>
       </section>
     </>
