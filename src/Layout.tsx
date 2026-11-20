@@ -52,7 +52,7 @@ export default function Layout() {
           <input
             className="input"
             type="search"
-            placeholder="Zoek in stukken en besluiten"
+            placeholder="Zoeken"
             aria-label="Zoeken"
             value={term}
             onChange={(e) => setTerm(e.target.value)}
@@ -68,10 +68,10 @@ export default function Layout() {
           ))}
           {user.isAdmin && (
             <>
-              <div className="nav-label">Beheer</div>
+              <div className="nav-label">Beheerder</div>
               <NavLink to="/beheer">
                 <Icon name="settings" />
-                Gebruikers en instellingen
+                Beheer
               </NavLink>
             </>
           )}

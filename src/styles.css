@@ -207,7 +207,8 @@ textarea {
   display: block;
   color: rgb(255 255 255 / 65%);
 }
-.topbar {
+.topbar,
+.scrim {
   display: none;
 }
 .main {
@@ -914,9 +915,6 @@ dialog.modal::backdrop {
   }
   .shell.menu-open .sidebar {
     transform: none;
-  }
-  .scrim {
-    display: none;
   }
   .shell.menu-open .scrim {
     display: block;
