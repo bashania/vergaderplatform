@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { aiAvailable } from "../ai";
 import { activated, createUserToken } from "../auth";
 import { dbHost, q, q1 } from "../db";
 import { bad, email, env, HttpError, json, notFound, optStr, str, uuid } from "../http";
@@ -20,7 +21,7 @@ route.get(
       const row = await q1(
         `SELECT $1::uuid[] AS ids, $2::jsonb AS doc, $3::int + 1 AS n, $4::boolean AS flag,
                 '2026-01-31'::date::text AS day, now() AS at,
-                (SELECT count(*)::int FROM users) >= 0 AS has_schema`,
+                (SELECT count(*)::int FROM users) >= 0 AND (SELECT count(*)::int FROM ai_calls) >= 0 AS has_schema`,
         [ids, JSON.stringify({ a: 1 }), 41, true],
       );
       dbOk =
@@ -40,7 +41,9 @@ route.get(
     } catch (e) {
       console.error("health blobs", e);
     }
-    const body = { db: dbOk ? "ok" : "fout", blobs: blobsOk ? "ok" : "fout" };
+    // "ai" zegt alleen of de server toegang tot een taalmodel heeft gekregen; of een verzoek slaagt,
+    // laat de verbindingstest in Platformbeheer zien. Telt niet mee voor de status.
+    const body = { db: dbOk ? "ok" : "fout", blobs: blobsOk ? "ok" : "fout", ai: aiAvailable() ? "beschikbaar" : "niet beschikbaar" };
     return dbOk && blobsOk ? body : json(body, 503);
   },
   { public: true },
