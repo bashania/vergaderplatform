@@ -3,7 +3,6 @@ export type Role = "secretaris" | "deelnemer";
 /** Een organisatie is een eigen omgeving; "beheerder" beheert die hele omgeving. */
 export type Organisation = { id: string; name: string; role: "beheerder" | "lid" };
 export type MeetingStatus = "concept" | "gepubliceerd" | "afgerond";
-export type Kind = "informatie" | "bespreking" | "besluit";
 
 export type Overleg = {
   id: string;
@@ -58,9 +57,12 @@ export type Doc = {
 
 export type AgendaItem = {
   id: string;
+  /** Gevuld bij een subpunt (2.1, 2.2): het hoofdpunt waar het onder valt. */
+  parentId: string | null;
   position: number;
   title: string;
-  kind: Kind;
+  /** Vrij label, bijvoorbeeld "Ter informatie" of "Ter bespreking en voor afspraken". Mag leeg zijn. */
+  kind: string;
   presenter: string;
   durationMin: number | null;
   description: string;
@@ -108,6 +110,8 @@ export type Meeting = {
   location: string;
   onlineUrl: string;
   status: MeetingStatus;
+  /** Toelichting bij de agenda als geheel. */
+  description: string;
   notes: string;
 };
 
@@ -177,11 +181,16 @@ export function fileExt(name: string): string {
   return ext && ext.length <= 5 ? ext : "doc";
 }
 
-export const KIND_LABEL: Record<Kind, string> = {
-  informatie: "Ter informatie",
-  bespreking: "Ter bespreking",
-  besluit: "Ter besluitvorming",
-};
+/** Veelgebruikte labels als suggestie; een eigen label typen kan ook. */
+export const LABELS = ["Ter informatie", "Ter bespreking", "Ter besluitvorming", "Ter vaststelling", "Ter bespreking en voor afspraken"];
+
+/** Kleur van het label: besluitpunten vallen op, informatiepunten zijn rustig. */
+export function labelTone(kind: string): "accent" | "info" | "" {
+  const k = kind.toLowerCase();
+  if (/besluit|vaststelling|goedkeuring|instemming/.test(k)) return "accent";
+  if (/informatie|kennis/.test(k)) return "info";
+  return "";
+}
 
 export const STATUS_LABEL: Record<MeetingStatus, string> = {
   concept: "Concept",

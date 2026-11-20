@@ -202,6 +202,7 @@ textarea {
 }
 .orgswitch select,
 .orgswitch .orgname {
+  width: 100%;
   padding: 8px 12px;
   border: 1px solid rgb(255 255 255 / 25%);
   border-radius: 8px;
@@ -210,6 +211,13 @@ textarea {
   font-weight: 600;
   line-height: 1.4;
   overflow-wrap: anywhere;
+}
+.orgswitch select {
+  cursor: pointer;
+}
+.orgswitch select:focus-visible {
+  outline: 2px solid var(--mark);
+  outline-offset: 1px;
 }
 .orgswitch select option {
   color: var(--text);
@@ -682,6 +690,51 @@ table.table {
   flex-direction: column;
   gap: 10px;
   min-width: 0;
+}
+.subitems {
+  border-top: 1px solid var(--line);
+}
+.subitem {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 0 10px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+.subitem:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.subitem-nr {
+  padding-top: 1px;
+  font-family: var(--mono);
+  font-size: 0.93em;
+  font-weight: 600;
+  color: var(--ink);
+}
+.preview {
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  max-height: 260px;
+  overflow-y: auto;
+}
+.preview .prow {
+  display: flex;
+  gap: 10px;
+  padding: 3px 0;
+}
+.preview .nr {
+  flex: none;
+  width: 34px;
+  font-family: var(--mono);
+  font-size: 0.93em;
+  font-weight: 600;
+  color: var(--ink);
+}
+.preview .prow.child {
+  padding-left: 18px;
 }
 .sub {
   display: flex;

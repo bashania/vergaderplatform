@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { countItems, parseAgenda } from "../agendaParse";
 import { api, saveBlob } from "../api";
 import { useAuth, useUser } from "../auth";
+import { AgendaPaste } from "../components/AgendaPaste";
 import { DocList, UploadButton } from "../components/Docs";
 import { ActionItem, ActionModal, DecisionModal } from "../components/Records";
 import {
@@ -10,7 +12,8 @@ import {
   fmtDateLong,
   fmtTime,
   fromLocalInput,
-  KIND_LABEL,
+  LABELS,
+  labelTone,
   STATUS_LABEL,
   timeRange,
   toLocalInput,
@@ -18,7 +21,6 @@ import {
   type AgendaItem,
   type Decision,
   type Doc,
-  type Kind,
   type Meeting,
   type MeetingDetail,
   type MeetingStatus,
@@ -27,7 +29,8 @@ import { Button, Empty, Field, Form, Icon, Loader, Modal, useLoad, useRun } from
 
 type ModalState =
   | { type: "meeting" }
-  | { type: "item"; item?: AgendaItem }
+  | { type: "item"; item?: AgendaItem; parent?: AgendaItem }
+  | { type: "import" }
   | { type: "decision"; itemId: string | null; decision?: Decision }
   | { type: "action"; itemId: string | null; action?: Action }
   | null;
@@ -40,6 +43,7 @@ function MeetingForm({ meeting, onClose, onSaved }: { meeting: Meeting; onClose:
   const [durationMin, setDurationMin] = useState(meeting.durationMin);
   const [location, setLocation] = useState(meeting.location);
   const [onlineUrl, setOnlineUrl] = useState(meeting.onlineUrl);
+  const [description, setDescription] = useState(meeting.description);
   return (
     <Modal title="Vergadering bewerken" onClose={onClose}>
       <Form
@@ -47,7 +51,7 @@ function MeetingForm({ meeting, onClose, onSaved }: { meeting: Meeting; onClose:
         onSubmit={async () => {
           await api(`/api/meetings/${meeting.id}`, {
             method: "PATCH",
-            body: { title, startsAt: fromLocalInput(startsAt), durationMin, location, onlineUrl },
+            body: { title, startsAt: fromLocalInput(startsAt), durationMin, location, onlineUrl, description },
           });
           onSaved();
         }}
@@ -69,26 +73,45 @@ function MeetingForm({ meeting, onClose, onSaved }: { meeting: Meeting; onClose:
         <Field label="Online link">
           <input className="input" type="url" placeholder="https://" value={onlineUrl} onChange={(e) => setOnlineUrl(e.target.value)} />
         </Field>
+        <Field label="Toelichting bij de agenda" hint="Staat boven de agenda en op de afdruk. Bijvoorbeeld wat er van de deelnemers wordt verwacht of waar de stukken staan.">
+          <textarea className="input" maxLength={10000} value={description} onChange={(e) => setDescription(e.target.value)} />
+        </Field>
       </Form>
     </Modal>
   );
 }
 
-function ItemForm({ meetingId, item, onClose, onSaved }: { meetingId: string; item?: AgendaItem; onClose: () => void; onSaved: () => void }) {
+function ItemForm({
+  meetingId,
+  item,
+  parent,
+  childCount,
+  onClose,
+  onSaved,
+}: {
+  meetingId: string;
+  item?: AgendaItem;
+  /** Nieuw subpunt onder dit hoofdpunt. */
+  parent?: AgendaItem;
+  childCount: number;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const run = useRun();
   const [title, setTitle] = useState(item?.title ?? "");
-  const [kind, setKind] = useState<Kind>(item?.kind ?? "bespreking");
+  const [kind, setKind] = useState(item?.kind ?? "");
   const [presenter, setPresenter] = useState(item?.presenter ?? "");
   const [durationMin, setDurationMin] = useState(item?.durationMin?.toString() ?? "");
   const [description, setDescription] = useState(item?.description ?? "");
+  const heading = item ? "Agendapunt bewerken" : parent ? `Subpunt bij "${parent.title}"` : "Agendapunt toevoegen";
   return (
-    <Modal title={item ? "Agendapunt bewerken" : "Agendapunt toevoegen"} onClose={onClose}>
+    <Modal title={heading} onClose={onClose}>
       <Form
         onCancel={onClose}
         onSubmit={async () => {
           const body = { title, kind, presenter, durationMin: durationMin === "" ? null : Number(durationMin), description };
           if (item) await api(`/api/items/${item.id}`, { method: "PATCH", body });
-          else await api(`/api/meetings/${meetingId}/items`, { method: "POST", body });
+          else await api(`/api/meetings/${meetingId}/items`, { method: "POST", body: { ...body, parentId: parent?.id ?? null } });
           onSaved();
         }}
         extra={
@@ -97,7 +120,8 @@ function ItemForm({ meetingId, item, onClose, onSaved }: { meetingId: string; it
               variant="danger"
               icon="trash"
               onClick={async () => {
-                if (!window.confirm(`Agendapunt "${item.title}" verwijderen? Stukken, besluiten en acties van dit punt blijven bij de vergadering staan.`)) return;
+                const subs = childCount ? ` De ${childCount} ${childCount === 1 ? "subpunt verdwijnt" : "subpunten verdwijnen"} mee.` : "";
+                if (!window.confirm(`Agendapunt "${item.title}" verwijderen?${subs} Stukken, besluiten en acties blijven bij de vergadering staan.`)) return;
                 if (await run(() => api(`/api/items/${item.id}`, { method: "DELETE" }), "Agendapunt verwijderd")) onSaved();
               }}
             >
@@ -110,14 +134,13 @@ function ItemForm({ meetingId, item, onClose, onSaved }: { meetingId: string; it
           <input className="input" required autoFocus maxLength={200} value={title} onChange={(e) => setTitle(e.target.value)} />
         </Field>
         <div className="form-row">
-          <Field label="Soort">
-            <select className="input" value={kind} onChange={(e) => setKind(e.target.value as Kind)}>
-              {(Object.keys(KIND_LABEL) as Kind[]).map((k) => (
-                <option key={k} value={k}>
-                  {KIND_LABEL[k]}
-                </option>
+          <Field label="Label" hint="Kies of typ zelf, bijvoorbeeld Ter vaststelling. Mag leeg.">
+            <input className="input" list="labels" maxLength={80} value={kind} onChange={(e) => setKind(e.target.value)} />
+            <datalist id="labels">
+              {LABELS.map((l) => (
+                <option key={l} value={l} />
               ))}
-            </select>
+            </datalist>
           </Field>
           <Field label="Inbrenger">
             <input className="input" maxLength={120} value={presenter} onChange={(e) => setPresenter(e.target.value)} />
@@ -129,6 +152,28 @@ function ItemForm({ meetingId, item, onClose, onSaved }: { meetingId: string; it
         <Field label="Toelichting" hint="Wat wordt er gevraagd van de deelnemers? Bij een besluit: het voorgestelde besluit.">
           <textarea className="input" maxLength={10000} value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>
+      </Form>
+    </Modal>
+  );
+}
+
+/** Een bestaande agenda (uit Word, pdf of e-mail) in één keer overnemen. */
+function ImportForm({ meetingId, startAt, onClose, onSaved }: { meetingId: string; startAt: number; onClose: () => void; onSaved: () => void }) {
+  const [text, setText] = useState("");
+  const count = countItems(parseAgenda(text));
+  return (
+    <Modal title="Agenda plakken" onClose={onClose}>
+      <Form
+        submitLabel={count ? `${count} ${count === 1 ? "punt" : "punten"} toevoegen` : "Toevoegen"}
+        onCancel={onClose}
+        onSubmit={async () => {
+          const items = parseAgenda(text);
+          if (!items.length) throw new Error("Er zijn geen agendapunten herkend. Plak de agenda met op elke regel één punt.");
+          await api(`/api/meetings/${meetingId}/items/bulk`, { method: "POST", body: { items } });
+          onSaved();
+        }}
+      >
+        <AgendaPaste value={text} onChange={setText} startAt={startAt} autoFocus />
       </Form>
     </Modal>
   );
@@ -194,14 +239,16 @@ function Notes({ value, canEdit, onSave, label }: { value: string; canEdit: bool
 
 // ---------- hulpfuncties ----------
 
-/** Begintijd per agendapunt, zolang alle voorgaande punten een duur hebben. */
-function itemTimes(startsAt: string, items: AgendaItem[]): (string | null)[] {
+/** Begintijd per agendapunt (in agendavolgorde), zolang alle voorgaande punten een duur hebben. */
+function itemTimes(startsAt: string, ordered: AgendaItem[]): Map<string, string> {
+  const times = new Map<string, string>();
   let t: Date | null = new Date(startsAt);
-  return items.map((it) => {
-    const label = t ? fmtTime(t) : null;
-    t = t && it.durationMin ? addMinutes(t.toISOString(), it.durationMin) : null;
-    return label;
-  });
+  for (const it of ordered) {
+    if (!t) break;
+    times.set(it.id, fmtTime(t));
+    t = it.durationMin ? addMinutes(t.toISOString(), it.durationMin) : null;
+  }
+  return times;
 }
 
 function icsStamp(d: Date) {
@@ -277,8 +324,13 @@ export default function MeetingPage() {
   const isSec = data.role === "secretaris";
   const locked = meeting.status === "afgerond";
   const canEdit = isSec && !locked;
-  const times = itemTimes(meeting.startsAt, items);
+
+  // Hoofdpunten met hun subpunten, in agendavolgorde.
+  const tops = items.filter((i) => !i.parentId);
+  const childrenOf = (parentId: string) => items.filter((i) => i.parentId === parentId);
+  const times = itemTimes(meeting.startsAt, tops.flatMap((t) => [t, ...childrenOf(t.id)]));
   const planned = items.reduce((sum, it) => sum + (it.durationMin ?? 0), 0);
+
   const me = members.find((m) => m.id === user.id);
   const present = members.filter((m) => m.attendance === "aanwezig").length;
   const absent = members.filter((m) => m.attendance === "afwezig").length;
@@ -298,11 +350,12 @@ export default function MeetingPage() {
       if (ok) void reload();
     });
 
-  async function move(index: number, delta: number) {
-    const ids = items.map((i) => i.id);
+  /** Verplaatst een punt binnen zijn eigen niveau: hoofdpunten onderling, subpunten binnen hun hoofdpunt. */
+  async function move(siblings: AgendaItem[], index: number, delta: number, parentId: string | null) {
+    const ids = siblings.map((i) => i.id);
     const [moved] = ids.splice(index, 1);
     ids.splice(index + delta, 0, moved);
-    if (await run(() => api(`/api/meetings/${meeting.id}/order`, { method: "PUT", body: { ids } }))) void reload();
+    if (await run(() => api(`/api/meetings/${meeting.id}/order`, { method: "PUT", body: { ids, parentId } }))) void reload();
   }
 
   async function remove() {
@@ -365,6 +418,82 @@ export default function MeetingPage() {
     </>
   );
 
+  /** Inhoud van één agendapunt; hoofd- en subpunten hebben dezelfde mogelijkheden. */
+  const renderItem = (it: AgendaItem, siblings: AgendaItem[], index: number, parent: AgendaItem | null) => (
+    <div className="agenda-main">
+      <div className="spread" style={{ alignItems: "flex-start" }}>
+        <div className="grow">
+          {parent ? <strong>{it.title}</strong> : <h3>{it.title}</h3>}
+          {(it.kind || times.get(it.id) || it.durationMin || it.presenter) && (
+            <div className="meta">
+              {it.kind && <span className={`badge ${labelTone(it.kind)}`}>{it.kind}</span>}
+              {times.get(it.id) && (
+                <span>
+                  {times.get(it.id)}
+                  {it.durationMin ? ` · ${it.durationMin} min` : ""}
+                </span>
+              )}
+              {!times.get(it.id) && it.durationMin && <span>{it.durationMin} min</span>}
+              {it.presenter && <span>Inbrenger: {it.presenter}</span>}
+            </div>
+          )}
+        </div>
+        {canEdit && (
+          <div className="row no-print" style={{ gap: 2 }}>
+            <Button variant="ghost" icon="up" aria-label={`${it.title} omhoog`} disabled={index === 0} onClick={() => move(siblings, index, -1, parent?.id ?? null)} />
+            <Button
+              variant="ghost"
+              icon="down"
+              aria-label={`${it.title} omlaag`}
+              disabled={index === siblings.length - 1}
+              onClick={() => move(siblings, index, 1, parent?.id ?? null)}
+            />
+            <Button variant="ghost" icon="edit" aria-label={`Agendapunt ${it.title} bewerken`} onClick={() => setModal({ type: "item", item: it })} />
+          </div>
+        )}
+      </div>
+
+      {it.description && <div className="pre">{it.description}</div>}
+
+      {(docsOf(it.id).length > 0 || !locked) && (
+        <div className="sub">
+          {docsOf(it.id).length > 0 && <span className="sub-label">Stukken</span>}
+          <DocList docs={docsOf(it.id)} canManage={canManageDoc} onChanged={reload} />
+          {!locked && (
+            <div>
+              <UploadButton variant="ghost" target={{ meetingId: meeting.id, agendaItemId: it.id }} onDone={reload} />
+            </div>
+          )}
+        </div>
+      )}
+
+      <Notes
+        label="Notulen"
+        value={it.notes}
+        canEdit={canEdit}
+        onSave={(notes) => run(() => api(`/api/items/${it.id}`, { method: "PATCH", body: { notes } }), "Notulen opgeslagen").then((ok) => (ok && void reload(), ok))}
+      />
+
+      {renderRecords(it.id)}
+
+      {canEdit && (
+        <div className="row no-print">
+          <Button small variant="secondary" icon="decision" onClick={() => setModal({ type: "decision", itemId: it.id })}>
+            Besluit vastleggen
+          </Button>
+          <Button small variant="secondary" icon="tasks" onClick={() => setModal({ type: "action", itemId: it.id })}>
+            Actie vastleggen
+          </Button>
+          {!parent && (
+            <Button small variant="ghost" icon="plus" onClick={() => setModal({ type: "item", parent: it })}>
+              Subpunt
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="page">
       <div className="print-only">
@@ -404,6 +533,11 @@ export default function MeetingPage() {
               </a>
             )}
           </div>
+          {meeting.description && (
+            <p className="lead pre" style={{ marginTop: 10 }}>
+              {meeting.description}
+            </p>
+          )}
         </div>
       </div>
 
@@ -534,77 +668,41 @@ export default function MeetingPage() {
             </span>
           )}
         </div>
-        {items.length === 0 && (
-          <Empty title="Nog geen agendapunten">{canEdit ? "Voeg het eerste agendapunt toe." : "De secretaris heeft de agenda nog niet gevuld."}</Empty>
+        {tops.length === 0 && (
+          <Empty title="Nog geen agendapunten">
+            {canEdit ? "Voeg het eerste agendapunt toe, of plak een bestaande agenda in één keer." : "De secretaris heeft de agenda nog niet gevuld."}
+          </Empty>
         )}
-        {items.map((it, i) => (
-          <article className="agenda-item" key={it.id}>
-            <div className="agenda-nr">{i + 1}</div>
-            <div className="agenda-main">
-              <div className="spread" style={{ alignItems: "flex-start" }}>
-                <div className="grow">
-                  <h3>{it.title}</h3>
-                  <div className="meta">
-                    <span className={`badge ${it.kind === "besluit" ? "accent" : it.kind === "informatie" ? "info" : ""}`}>{KIND_LABEL[it.kind]}</span>
-                    {times[i] && (
-                      <span>
-                        {times[i]}
-                        {it.durationMin ? ` · ${it.durationMin} min` : ""}
-                      </span>
-                    )}
-                    {!times[i] && it.durationMin && <span>{it.durationMin} min</span>}
-                    {it.presenter && <span>Inbrenger: {it.presenter}</span>}
-                  </div>
-                </div>
-                {canEdit && (
-                  <div className="row no-print" style={{ gap: 2 }}>
-                    <Button variant="ghost" icon="up" aria-label="Omhoog" disabled={i === 0} onClick={() => move(i, -1)} />
-                    <Button variant="ghost" icon="down" aria-label="Omlaag" disabled={i === items.length - 1} onClick={() => move(i, 1)} />
-                    <Button variant="ghost" icon="edit" aria-label={`Agendapunt ${it.title} bewerken`} onClick={() => setModal({ type: "item", item: it })} />
+        {tops.map((top, i) => {
+          const subs = childrenOf(top.id);
+          return (
+            <article className="agenda-item" key={top.id}>
+              <div className="agenda-nr">{i + 1}</div>
+              <div className="agenda-main">
+                {renderItem(top, tops, i, null)}
+                {subs.length > 0 && (
+                  <div className="subitems">
+                    {subs.map((s, j) => (
+                      <div className="subitem" key={s.id}>
+                        <div className="subitem-nr">
+                          {i + 1}.{j + 1}
+                        </div>
+                        {renderItem(s, subs, j, top)}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
-
-              {it.description && <div className="pre">{it.description}</div>}
-
-              {(docsOf(it.id).length > 0 || !locked) && (
-                <div className="sub">
-                  {docsOf(it.id).length > 0 && <span className="sub-label">Stukken</span>}
-                  <DocList docs={docsOf(it.id)} canManage={canManageDoc} onChanged={reload} />
-                  {!locked && (
-                    <div>
-                      <UploadButton variant="ghost" target={{ meetingId: meeting.id, agendaItemId: it.id }} onDone={reload} />
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <Notes
-                label="Notulen"
-                value={it.notes}
-                canEdit={canEdit}
-                onSave={(notes) => run(() => api(`/api/items/${it.id}`, { method: "PATCH", body: { notes } }), "Notulen opgeslagen").then((ok) => (ok && void reload(), ok))}
-              />
-
-              {renderRecords(it.id)}
-
-              {canEdit && (
-                <div className="row no-print">
-                  <Button small variant="secondary" icon="decision" onClick={() => setModal({ type: "decision", itemId: it.id })}>
-                    Besluit vastleggen
-                  </Button>
-                  <Button small variant="secondary" icon="tasks" onClick={() => setModal({ type: "action", itemId: it.id })}>
-                    Actie vastleggen
-                  </Button>
-                </div>
-              )}
-            </div>
-          </article>
-        ))}
+            </article>
+          );
+        })}
         {canEdit && (
-          <div className="card-body no-print" style={{ borderTop: items.length ? "1px solid var(--line)" : undefined }}>
+          <div className="card-body row no-print" style={{ borderTop: tops.length ? "1px solid var(--line)" : undefined }}>
             <Button icon="plus" onClick={() => setModal({ type: "item" })}>
               Agendapunt toevoegen
+            </Button>
+            <Button variant="secondary" icon="copy" onClick={() => setModal({ type: "import" })}>
+              Agenda plakken
             </Button>
           </div>
         )}
@@ -680,7 +778,17 @@ export default function MeetingPage() {
       )}
 
       {modal?.type === "meeting" && <MeetingForm meeting={meeting} onClose={() => setModal(null)} onSaved={saved} />}
-      {modal?.type === "item" && <ItemForm meetingId={meeting.id} item={modal.item} onClose={() => setModal(null)} onSaved={saved} />}
+      {modal?.type === "item" && (
+        <ItemForm
+          meetingId={meeting.id}
+          item={modal.item}
+          parent={modal.parent}
+          childCount={modal.item ? childrenOf(modal.item.id).length : 0}
+          onClose={() => setModal(null)}
+          onSaved={saved}
+        />
+      )}
+      {modal?.type === "import" && <ImportForm meetingId={meeting.id} startAt={tops.length + 1} onClose={() => setModal(null)} onSaved={saved} />}
       {modal?.type === "decision" && (
         <DecisionModal meetingId={meeting.id} agendaItemId={modal.itemId} decision={modal.decision} onClose={() => setModal(null)} onSaved={saved} />
       )}

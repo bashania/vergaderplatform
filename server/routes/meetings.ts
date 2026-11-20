@@ -3,9 +3,52 @@ import { loadMeeting, requireOverleg } from "../access";
 import { q, q1 } from "../db";
 import { deleteDocumentBlobs } from "../files";
 import { bad, dateTime, forbidden, HttpError, httpUrl, int, notFound, oneOf, optInt, optStr, optUuid, str, uuid } from "../http";
+
+type NewItem = { title: string; kind: string; description: string; children: NewItem[] };
+
+/** Agendapunten uit een geplakte of aangeleverde agenda: hoofdpunten met maximaal één niveau subpunten. */
+function parseItems(raw: unknown, depth = 0): NewItem[] {
+  if (!Array.isArray(raw)) throw bad("De agendapunten zijn ongeldig.");
+  if (raw.length > 60) throw bad("Te veel agendapunten in één keer (maximaal 60 per niveau).");
+  return raw.map((r) => {
+    const o = (r ?? {}) as Record<string, unknown>;
+    return {
+      title: str(o.title, "Onderwerp", { max: 200 }),
+      kind: optStr(o.kind, "Label", 80),
+      description: optStr(o.description, "Toelichting", 10_000),
+      children: depth === 0 && o.children !== undefined ? parseItems(o.children, 1) : [],
+    };
+  });
+}
+
+/** Voegt de punten achteraan de agenda toe en geeft het aantal toegevoegde punten terug. */
+async function insertItems(meetingId: string, items: NewItem[]): Promise<number> {
+  const start = await q1<{ n: number }>(
+    `SELECT COALESCE(max(position), 0)::int AS n FROM agenda_items WHERE meeting_id = $1 AND parent_id IS NULL`,
+    [meetingId],
+  );
+  let count = 0;
+  let position = start?.n ?? 0;
+  for (const item of items) {
+    const id = randomUUID();
+    await q(
+      `INSERT INTO agenda_items (id, meeting_id, position, title, kind, description) VALUES ($1, $2, $3, $4, $5, $6)`,
+      [id, meetingId, ++position, item.title, item.kind, item.description],
+    );
+    count++;
+    let childPosition = 0;
+    for (const child of item.children) {
+      await q(
+        `INSERT INTO agenda_items (id, meeting_id, parent_id, position, title, kind, description) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [randomUUID(), meetingId, id, ++childPosition, child.title, child.kind, child.description],
+      );
+      count++;
+    }
+  }
+  return count;
+}
 import { route } from "../router";
 
-const KINDS = ["informatie", "bespreking", "besluit"] as const;
 const STATUSES = ["concept", "gepubliceerd", "afgerond"] as const;
 
 route.post("/api/overleggen/:id/meetings", async (c) => {
@@ -17,25 +60,36 @@ route.post("/api/overleggen/:id/meetings", async (c) => {
   const durationMin = int(b.durationMin ?? 60, "Duur", 5, 1440);
   const location = optStr(b.location, "Locatie", 200);
   const onlineUrl = httpUrl(b.onlineUrl, "Online link");
-  const copyFromId = optUuid(b.copyFromId, "Vorige vergadering");
+  const description = optStr(b.description, "Toelichting", 10_000);
+  // Een geplakte agenda gaat voor op overnemen van de vorige vergadering.
+  const items = b.items !== undefined ? parseItems(b.items) : [];
+  const copyFromId = items.length ? null : optUuid(b.copyFromId, "Vorige vergadering");
 
   if (copyFromId && !(await q1(`SELECT 1 AS x FROM meetings WHERE id = $1 AND overleg_id = $2`, [copyFromId, overlegId]))) {
     throw bad("De vergadering om de agenda van over te nemen bestaat niet in dit overleg.");
   }
   const id = randomUUID();
   await q(
-    `INSERT INTO meetings (id, overleg_id, title, starts_at, duration_min, location, online_url, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-    [id, overlegId, title, startsAt, durationMin, location, onlineUrl, c.user.id],
+    `INSERT INTO meetings (id, overleg_id, title, starts_at, duration_min, location, online_url, description, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [id, overlegId, title, startsAt, durationMin, location, onlineUrl, description, c.user.id],
   );
+  if (items.length) await insertItems(id, items);
   if (copyFromId) {
     // Agendastructuur overnemen (zonder notulen, stukken en besluiten): scheelt elke keer opnieuw opbouwen.
-    await q(
-      `INSERT INTO agenda_items (id, meeting_id, position, title, kind, presenter, duration_min, description)
-       SELECT gen_random_uuid(), $1, position, title, kind, presenter, duration_min, description
-         FROM agenda_items WHERE meeting_id = $2`,
-      [id, copyFromId],
+    const source = await q<{ id: string; parentId: string | null; position: number; title: string; kind: string; presenter: string; durationMin: number | null; description: string }>(
+      `SELECT id, parent_id, position, title, kind, presenter, duration_min, description FROM agenda_items WHERE meeting_id = $1`,
+      [copyFromId],
     );
+    const newId = new Map(source.map((s) => [s.id, randomUUID()]));
+    // Eerst de hoofdpunten, dan de subpunten (die verwijzen naar hun nieuwe hoofdpunt).
+    for (const s of [...source.filter((x) => !x.parentId), ...source.filter((x) => x.parentId)]) {
+      await q(
+        `INSERT INTO agenda_items (id, meeting_id, parent_id, position, title, kind, presenter, duration_min, description)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [newId.get(s.id), id, s.parentId ? newId.get(s.parentId) : null, s.position, s.title, s.kind, s.presenter, s.durationMin, s.description],
+      );
+    }
   }
   return { id };
 });
@@ -45,7 +99,7 @@ route.get("/api/meetings/:id", async (c) => {
   const { meeting, role } = await loadMeeting(c.user, id);
   const [items, documents, decisions, actions, members, carriedActions] = await Promise.all([
     q(
-      `SELECT id, position, title, kind, presenter, duration_min, description, notes
+      `SELECT id, parent_id, position, title, kind, presenter, duration_min, description, notes
          FROM agenda_items WHERE meeting_id = $1 ORDER BY position, title`,
       [id],
     ),
@@ -104,6 +158,7 @@ route.patch("/api/meetings/:id", async (c) => {
   if (b.durationMin !== undefined) set("duration_min", int(b.durationMin, "Duur", 5, 1440));
   if (b.location !== undefined) set("location", optStr(b.location, "Locatie", 200));
   if (b.onlineUrl !== undefined) set("online_url", httpUrl(b.onlineUrl, "Online link"));
+  if (b.description !== undefined) set("description", optStr(b.description, "Toelichting", 10_000));
   if (b.notes !== undefined) set("notes", optStr(b.notes, "Notulen", 50_000));
   if (b.status !== undefined) set("status", oneOf(b.status, "Status", STATUSES));
   if (sets.length === 1) throw bad("Geen wijzigingen.");
@@ -136,7 +191,7 @@ route.delete("/api/meetings/:id", async (c) => {
 function itemFields(b: Record<string, unknown>, partial: boolean) {
   const out: Record<string, unknown> = {};
   if (!partial || b.title !== undefined) out.title = str(b.title, "Titel", { max: 200 });
-  if (!partial || b.kind !== undefined) out.kind = oneOf(b.kind ?? "bespreking", "Soort", KINDS);
+  if (!partial || b.kind !== undefined) out.kind = optStr(b.kind, "Label", 80);
   if (!partial || b.presenter !== undefined) out.presenter = optStr(b.presenter, "Inbrenger", 120);
   if (!partial || b.durationMin !== undefined) out.duration_min = optInt(b.durationMin, "Duur", 1, 600);
   if (!partial || b.description !== undefined) out.description = optStr(b.description, "Toelichting", 10_000);
@@ -147,14 +202,31 @@ function itemFields(b: Record<string, unknown>, partial: boolean) {
 route.post("/api/meetings/:id/items", async (c) => {
   const meetingId = uuid(c.params.id, "Vergadering");
   await loadMeeting(c.user, meetingId, { edit: true });
-  const f = itemFields(await c.body(), false);
+  const b = await c.body();
+  const f = itemFields(b, false);
+  const parentId = optUuid(b.parentId, "Hoofdpunt");
+  if (parentId && !(await q1(`SELECT 1 AS x FROM agenda_items WHERE id = $1 AND meeting_id = $2 AND parent_id IS NULL`, [parentId, meetingId]))) {
+    throw bad("Een subpunt kan alleen onder een hoofdpunt van deze vergadering.");
+  }
   const id = randomUUID();
   await q(
-    `INSERT INTO agenda_items (id, meeting_id, position, title, kind, presenter, duration_min, description, notes)
-     VALUES ($1, $2, (SELECT COALESCE(max(position), 0) + 1 FROM agenda_items WHERE meeting_id = $2), $3, $4, $5, $6, $7, $8)`,
-    [id, meetingId, f.title, f.kind, f.presenter, f.duration_min, f.description, f.notes ?? ""],
+    `INSERT INTO agenda_items (id, meeting_id, parent_id, position, title, kind, presenter, duration_min, description, notes)
+     VALUES ($1, $2, $3::uuid,
+             (SELECT COALESCE(max(position), 0) + 1 FROM agenda_items
+               WHERE meeting_id = $2 AND parent_id IS NOT DISTINCT FROM $3::uuid),
+             $4, $5, $6, $7, $8, $9)`,
+    [id, meetingId, parentId, f.title, f.kind, f.presenter, f.duration_min, f.description, f.notes ?? ""],
   );
   return { id };
+});
+
+/** Een bestaande agenda in één keer overnemen (geplakt uit een document). */
+route.post("/api/meetings/:id/items/bulk", async (c) => {
+  const meetingId = uuid(c.params.id, "Vergadering");
+  await loadMeeting(c.user, meetingId, { edit: true });
+  const items = parseItems((await c.body()).items);
+  if (!items.length) throw bad("Er zijn geen agendapunten herkend.");
+  return { count: await insertItems(meetingId, items) };
 });
 
 async function meetingOfItem(itemId: string): Promise<string> {
@@ -190,7 +262,11 @@ route.put("/api/meetings/:id/order", async (c) => {
   const b = await c.body();
   if (!Array.isArray(b.ids)) throw bad("Volgorde ontbreekt.");
   const ids = b.ids.map((v) => uuid(v, "Agendapunt"));
-  const existing = await q<{ id: string }>(`SELECT id FROM agenda_items WHERE meeting_id = $1`, [meetingId]);
+  const parentId = optUuid(b.parentId, "Hoofdpunt");
+  const existing = await q<{ id: string }>(
+    `SELECT id FROM agenda_items WHERE meeting_id = $1 AND parent_id IS NOT DISTINCT FROM $2::uuid`,
+    [meetingId, parentId],
+  );
   const known = new Set(existing.map((r) => r.id));
   if (ids.length !== known.size || new Set(ids).size !== ids.length || !ids.every((i) => known.has(i))) {
     throw new HttpError(409, "De agenda is intussen gewijzigd. Ververs de pagina en probeer het opnieuw.");

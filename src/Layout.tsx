@@ -62,7 +62,7 @@ export default function Layout() {
               Organisatie
             </label>
             {organisations.length > 1 ? (
-              <select id="organisatie" className="input" value={org.id} onChange={(e) => switchOrganisation(e.target.value)}>
+              <select id="organisatie" value={org.id} onChange={(e) => switchOrganisation(e.target.value)}>
                 {organisations.map((o) => (
                   <option key={o.id} value={o.id}>
                     {o.name}

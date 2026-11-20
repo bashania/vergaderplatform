@@ -238,7 +238,7 @@ check("ongeldige online link geweigerd", (await admin.post(`/api/overleggen/${ov
 check("concept onzichtbaar voor deelnemer", (await dee.client.get(`/api/meetings/${meetingId}`)).status === 404);
 check("concept niet op dashboard deelnemer", (await dee.client.get("/api/dashboard")).data.upcoming.length === 0);
 const itemIds = [];
-for (const [title, kind, durationMin] of [["Opening en mededelingen", "informatie", 10], ["Begroting 2027", "besluit", 40], ["Rondvraag", "bespreking", null]]) {
+for (const [title, kind, durationMin] of [["Opening en mededelingen", "Ter informatie", 10], ["Begroting 2027", "Ter besluitvorming", 40], ["Rondvraag", "", null]]) {
   const r = await admin.post(`/api/meetings/${meetingId}/items`, { title, kind, durationMin, presenter: "Bea", description: `Toelichting ${title}` });
   check(`agendapunt ${title}`, r.status === 200, JSON.stringify(r));
   itemIds.push(r.data.id);
@@ -258,6 +258,78 @@ for (const [title, kind, durationMin] of [["Opening en mededelingen", "informati
   check("deelnemer mag notulen niet wijzigen", (await dee.client.patch(`/api/items/${itemIds[0]}`, { notes: "x" })).status === 403);
   check("buitenstaander ziet vergadering niet", (await bui.client.get(`/api/meetings/${meetingId}`)).status === 404);
   check("dashboard deelnemer toont vergadering", (await dee.client.get("/api/dashboard")).data.upcoming.some((u) => u.id === meetingId));
+}
+
+step("3b. Subpunten, vrije labels en een bestaande agenda overnemen");
+{
+  // De agenda van een echte vergadering: hoofdpunten, subpunten 2.1 t/m 2.6 en eigen labels.
+  const rvt = [
+    { title: "Opening en vaststelling agenda", kind: "Ter vaststelling" },
+    {
+      title: "Mededelingen directie",
+      children: [
+        { title: "Voortgang verbouwing en verhuizing", kind: "Ter informatie" },
+        { title: "Remplooi / arbodienst", kind: "Ter informatie" },
+        { title: "Bedrijfsmakelaar: verhuur kantoorruimte", kind: "Ter informatie" },
+        { title: "Afspraken leverancier", kind: "Ter bespreking en voor afspraken" },
+        { title: "Q3-cijfers 2026", kind: "Ter bespreking en voor afspraken" },
+        { title: "Liquiditeitsprognose", kind: "Ter bespreking en voor afspraken" },
+      ],
+    },
+    { title: "Rendabiliteit", kind: "Ter bespreking" },
+    { title: "Personeelsontwikkeling", kind: "Ter informatie" },
+    { title: "Bespreking statuten", kind: "Ter bespreking", description: "Bespreking van de stukken en voorgestelde wijzigingen." },
+  ];
+  const created = await admin.post(`/api/overleggen/${overlegId}/meetings`, {
+    title: "RvT 3 december",
+    startsAt: new Date(Date.now() + 13 * 86400e3).toISOString(),
+    durationMin: 120,
+    location: "Rijswijk",
+    description: "De directie voegt de actuele financiële stukken toe.",
+    items: rvt,
+  });
+  check("vergadering met geplakte agenda aangemaakt", created.status === 200, JSON.stringify(created));
+  const mid = created.data.id;
+  let m = await admin.get(`/api/meetings/${mid}`);
+  const tops = () => m.data.items.filter((i) => !i.parentId);
+  const subsOf = (id) => m.data.items.filter((i) => i.parentId === id);
+  check("5 hoofdpunten en 6 subpunten", tops().length === 5 && subsOf(tops()[1].id).length === 6 && m.data.items.length === 11, `${m.data.items.length}`);
+  check("vrije labels bewaard", tops()[0].kind === "Ter vaststelling" && tops()[1].kind === "" && subsOf(tops()[1].id)[3].kind === "Ter bespreking en voor afspraken");
+  check("toelichting bij punt en bij agenda", tops()[4].description.startsWith("Bespreking van de stukken") && m.data.meeting.description.startsWith("De directie"));
+  check("volgorde subpunten klopt", subsOf(tops()[1].id).map((s) => s.position).join() === "1,2,3,4,5,6");
+
+  const parent = tops()[1];
+  const sub = await admin.post(`/api/meetings/${mid}/items`, { title: "Extra mededeling", kind: "Ter informatie", parentId: parent.id });
+  check("subpunt toevoegen", sub.status === 200, JSON.stringify(sub));
+  check("subpunt onder een subpunt geweigerd", (await admin.post(`/api/meetings/${mid}/items`, { title: "Te diep", parentId: sub.data.id })).status === 400);
+  check("subpunt onder punt van andere vergadering geweigerd", (await admin.post(`/api/meetings/${meetingId}/items`, { title: "Verkeerd", parentId: parent.id })).status === 400);
+  m = await admin.get(`/api/meetings/${mid}`);
+  const subIds = subsOf(parent.id).map((s) => s.id);
+  check("nieuw subpunt komt achteraan", subIds.length === 7 && subIds[6] === sub.data.id);
+  const reordered = [subIds[6], ...subIds.slice(0, 6)];
+  check("subpunten onderling verplaatsen", (await admin.put(`/api/meetings/${mid}/order`, { ids: reordered, parentId: parent.id })).status === 200);
+  check("hoofdpunten en subpunten niet door elkaar te verplaatsen", (await admin.put(`/api/meetings/${mid}/order`, { ids: reordered })).status === 409);
+  m = await admin.get(`/api/meetings/${mid}`);
+  check("nieuwe volgorde subpunten", subsOf(parent.id).map((s) => s.id).join() === reordered.join());
+  check("hoofdpunten onderling verplaatsen blijft werken", (await admin.put(`/api/meetings/${mid}/order`, { ids: tops().map((x) => x.id).reverse() })).status === 200);
+  await admin.put(`/api/meetings/${mid}/order`, { ids: tops().map((x) => x.id) });
+
+  const more = await admin.post(`/api/meetings/${mid}/items/bulk`, { items: [{ title: "Rondvraag" }, { title: "Sluiting", kind: "Ter informatie" }] });
+  check("agenda plakken voegt achteraan toe", more.status === 200 && more.data.count === 2, JSON.stringify(more));
+  check("lege plakactie geweigerd", (await admin.post(`/api/meetings/${mid}/items/bulk`, { items: [] })).status === 400);
+  check("deelnemer mag geen agenda plakken", (await dee.client.post(`/api/meetings/${mid}/items/bulk`, { items: [{ title: "x" }] })).status === 404);
+  m = await admin.get(`/api/meetings/${mid}`);
+  check("7 hoofdpunten na plakken", tops().length === 7 && tops()[6].title === "Sluiting" && tops()[6].position === 7);
+
+  const copy = await admin.post(`/api/overleggen/${overlegId}/meetings`, { title: "RvT kopie", startsAt: new Date(Date.now() + 40 * 86400e3).toISOString(), copyFromId: mid });
+  const cm = await admin.get(`/api/meetings/${copy.data.id}`);
+  const cTops = cm.data.items.filter((i) => !i.parentId);
+  check("overnemen behoudt subpunten", cm.data.items.length === 14 && cTops.length === 7 && cm.data.items.filter((i) => i.parentId === cTops[1].id).length === 7 && cm.data.items.every((i) => i.id !== parent.id));
+
+  check("hoofdpunt verwijderen verwijdert de subpunten", (await admin.del(`/api/items/${parent.id}`)).status === 200);
+  m = await admin.get(`/api/meetings/${mid}`);
+  check("na verwijderen 6 punten over", m.data.items.length === 6 && m.data.items.every((i) => !i.parentId));
+  check("opruimen testvergaderingen", (await admin.del(`/api/meetings/${mid}`)).status === 200 && (await admin.del(`/api/meetings/${copy.data.id}`)).status === 200);
 }
 
 step("4. Stukken");

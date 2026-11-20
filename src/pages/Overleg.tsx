@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth, useUser } from "../auth";
+import { parseAgenda } from "../agendaParse";
+import { AgendaPaste } from "../components/AgendaPaste";
 import { DocList, UploadButton } from "../components/Docs";
 import { LinkModal, type LinkInfo } from "../components/LinkModal";
 import { ActionList, DecisionTable } from "../components/Records";
@@ -44,6 +46,8 @@ function NewMeeting({ data, onClose }: { data: OverlegDetail; onClose: () => voi
   const [location, setLocation] = useState(last?.location ?? "");
   const [onlineUrl, setOnlineUrl] = useState("");
   const [copyFromId, setCopyFromId] = useState(last?.id ?? "");
+  const [agenda, setAgenda] = useState("");
+  const pasted = parseAgenda(agenda);
   return (
     <Modal title="Nieuwe vergadering" onClose={onClose}>
       <Form
@@ -52,7 +56,15 @@ function NewMeeting({ data, onClose }: { data: OverlegDetail; onClose: () => voi
         onSubmit={async () => {
           const { id } = await api<{ id: string }>(`/api/overleggen/${data.overleg.id}/meetings`, {
             method: "POST",
-            body: { title, startsAt: fromLocalInput(startsAt), durationMin, location, onlineUrl, copyFromId: copyFromId || null },
+            body: {
+              title,
+              startsAt: fromLocalInput(startsAt),
+              durationMin,
+              location,
+              onlineUrl,
+              // Een geplakte agenda gaat voor op overnemen van de vorige vergadering.
+              ...(pasted.length ? { items: pasted } : { copyFromId: copyFromId || null }),
+            },
           });
           navigate(`/vergaderingen/${id}`);
         }}
@@ -83,7 +95,8 @@ function NewMeeting({ data, onClose }: { data: OverlegDetail; onClose: () => voi
         <Field label="Online link (optioneel)" hint="Bijvoorbeeld de Teams-link.">
           <input className="input" type="url" placeholder="https://" value={onlineUrl} onChange={(e) => setOnlineUrl(e.target.value)} />
         </Field>
-        {data.meetings.length > 0 && (
+        <AgendaPaste value={agenda} onChange={setAgenda} label="Bestaande agenda plakken (optioneel)" />
+        {data.meetings.length > 0 && pasted.length === 0 && (
           <Field label="Agenda overnemen van" hint="Neemt de agendapunten over, zonder notulen, stukken en besluiten.">
             <select className="input" value={copyFromId} onChange={(e) => setCopyFromId(e.target.value)}>
               <option value="">Niet overnemen, lege agenda</option>
