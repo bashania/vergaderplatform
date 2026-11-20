@@ -1,15 +1,20 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
-import { useUser } from "../auth";
+import { useAuth, useUser } from "../auth";
+import { parseAgenda } from "../agendaParse";
+import { AgendaPaste } from "../components/AgendaPaste";
 import { DocList, UploadButton } from "../components/Docs";
+import { LinkModal, type LinkInfo } from "../components/LinkModal";
 import { ActionList, DecisionTable } from "../components/Records";
 import { fromLocalInput, toLocalInput, type Action, type Decision, type Doc, type Member, type MeetingSummary, type Role } from "../lib";
 import { Button, Empty, Field, Form, Loader, Modal, useLoad, useRun } from "../ui";
 import { MeetingRow } from "./Dashboard";
 
 type OverlegDetail = {
-  overleg: { id: string; name: string; description: string; archived: boolean };
+  overleg: { id: string; name: string; description: string; archived: boolean; organisationId: string; organisationName: string };
+  /** De gebruiker is beheerder van de organisatie van dit overleg. */
+  orgAdmin: boolean;
   role: Role;
   members: Member[];
   meetings: MeetingSummary[];
@@ -41,6 +46,8 @@ function NewMeeting({ data, onClose }: { data: OverlegDetail; onClose: () => voi
   const [location, setLocation] = useState(last?.location ?? "");
   const [onlineUrl, setOnlineUrl] = useState("");
   const [copyFromId, setCopyFromId] = useState(last?.id ?? "");
+  const [agenda, setAgenda] = useState("");
+  const pasted = parseAgenda(agenda);
   return (
     <Modal title="Nieuwe vergadering" onClose={onClose}>
       <Form
@@ -49,7 +56,15 @@ function NewMeeting({ data, onClose }: { data: OverlegDetail; onClose: () => voi
         onSubmit={async () => {
           const { id } = await api<{ id: string }>(`/api/overleggen/${data.overleg.id}/meetings`, {
             method: "POST",
-            body: { title, startsAt: fromLocalInput(startsAt), durationMin, location, onlineUrl, copyFromId: copyFromId || null },
+            body: {
+              title,
+              startsAt: fromLocalInput(startsAt),
+              durationMin,
+              location,
+              onlineUrl,
+              // Een geplakte agenda gaat voor op overnemen van de vorige vergadering.
+              ...(pasted.length ? { items: pasted } : { copyFromId: copyFromId || null }),
+            },
           });
           navigate(`/vergaderingen/${id}`);
         }}
@@ -80,7 +95,8 @@ function NewMeeting({ data, onClose }: { data: OverlegDetail; onClose: () => voi
         <Field label="Online link (optioneel)" hint="Bijvoorbeeld de Teams-link.">
           <input className="input" type="url" placeholder="https://" value={onlineUrl} onChange={(e) => setOnlineUrl(e.target.value)} />
         </Field>
-        {data.meetings.length > 0 && (
+        <AgendaPaste value={agenda} onChange={setAgenda} label="Bestaande agenda plakken (optioneel)" />
+        {data.meetings.length > 0 && pasted.length === 0 && (
           <Field label="Agenda overnemen van" hint="Neemt de agendapunten over, zonder notulen, stukken en besluiten.">
             <select className="input" value={copyFromId} onChange={(e) => setCopyFromId(e.target.value)}>
               <option value="">Niet overnemen, lege agenda</option>
@@ -99,7 +115,6 @@ function NewMeeting({ data, onClose }: { data: OverlegDetail; onClose: () => voi
 }
 
 function EditOverleg({ data, onClose, onSaved }: { data: OverlegDetail; onClose: () => void; onSaved: () => void }) {
-  const user = useUser();
   const [name, setName] = useState(data.overleg.name);
   const [description, setDescription] = useState(data.overleg.description);
   const [archived, setArchived] = useState(data.overleg.archived);
@@ -109,7 +124,7 @@ function EditOverleg({ data, onClose, onSaved }: { data: OverlegDetail; onClose:
         onCancel={onClose}
         onSubmit={async () => {
           const body: Record<string, unknown> = { name, description };
-          if (user.isAdmin) body.archived = archived;
+          if (data.orgAdmin) body.archived = archived;
           await api(`/api/overleggen/${data.overleg.id}`, { method: "PATCH", body });
           onSaved();
         }}
@@ -120,7 +135,7 @@ function EditOverleg({ data, onClose, onSaved }: { data: OverlegDetail; onClose:
         <Field label="Omschrijving">
           <textarea className="input" maxLength={1000} value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>
-        {user.isAdmin && (
+        {data.orgAdmin && (
           <label className="check">
             <input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} />
             Gearchiveerd (blijft raadpleegbaar, verdwijnt uit de overzichten)
@@ -132,13 +147,28 @@ function EditOverleg({ data, onClose, onSaved }: { data: OverlegDetail; onClose:
 }
 
 function Members({ data, canEdit, onChanged }: { data: OverlegDetail; canEdit: boolean; onChanged: () => void }) {
-  const user = useUser();
   const run = useRun();
-  const directory = useLoad<{ users: { id: string; name: string; email: string }[] }>(canEdit ? "/api/users/directory" : null);
-  const [addId, setAddId] = useState("");
-  const [addRole, setAddRole] = useState<Role>("deelnemer");
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [role, setRole] = useState<Role>("deelnemer");
+  const [link, setLink] = useState<LinkInfo | null>(null);
   const base = `/api/overleggen/${data.overleg.id}/members`;
-  const candidates = (directory.data?.users ?? []).filter((u) => !data.members.some((m) => m.id === u.id));
+
+  type Added = { name: string; email: string; created: boolean; pending: boolean } & Partial<LinkInfo>;
+
+  async function add() {
+    const res = await api<Added>(base, { method: "POST", body: { email, name, role } });
+    setEmail("");
+    setName("");
+    setRole("deelnemer");
+    onChanged();
+    // Nieuw account: direct de uitnodigingslink tonen om te versturen.
+    if (res.created && res.token) setLink(res as LinkInfo);
+  }
+
+  async function invite(m: Member) {
+    await run(async () => setLink(await api<LinkInfo>(`${base}/${m.id}/invite`, { method: "POST" })));
+  }
 
   return (
     <section className="card">
@@ -151,8 +181,8 @@ function Members({ data, canEdit, onChanged }: { data: OverlegDetail; canEdit: b
       {data.members.length ? (
         <ul className="list">
           {data.members.map((m) => (
-            <li key={m.id} style={{ alignItems: "center" }}>
-              <div className="grow">
+            <li key={m.id} style={{ alignItems: "center", flexWrap: "wrap" }}>
+              <div className="grow" style={{ minWidth: 180 }}>
                 <strong>{m.name}</strong>
                 <div className="meta">
                   <span>{m.email}</span>
@@ -161,7 +191,12 @@ function Members({ data, canEdit, onChanged }: { data: OverlegDetail; canEdit: b
                 </div>
               </div>
               {canEdit ? (
-                <>
+                <div className="row" style={{ gap: 4 }}>
+                  {!m.hasPassword && m.active !== false && (
+                    <Button small variant="ghost" icon="mail" onClick={() => invite(m)}>
+                      Uitnodigingslink
+                    </Button>
+                  )}
                   <select
                     className="input"
                     style={{ width: "auto" }}
@@ -183,7 +218,7 @@ function Members({ data, canEdit, onChanged }: { data: OverlegDetail; canEdit: b
                       if (await run(() => api(`${base}/${m.id}`, { method: "DELETE" }), "Deelnemer verwijderd")) onChanged();
                     }}
                   />
-                </>
+                </div>
               ) : (
                 <span className={`badge ${m.role === "secretaris" ? "accent" : ""}`}>{m.role === "secretaris" ? "Secretaris" : "Deelnemer"}</span>
               )}
@@ -195,45 +230,30 @@ function Members({ data, canEdit, onChanged }: { data: OverlegDetail; canEdit: b
       )}
       {canEdit && (
         <div className="card-body stack" style={{ borderTop: "1px solid var(--line)" }}>
-          <form
-            className="row"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (!addId) return;
-              if (await run(() => api(`${base}/${addId}`, { method: "PUT", body: { role: addRole } }), "Deelnemer toegevoegd")) {
-                setAddId("");
-                onChanged();
-              }
-            }}
-          >
-            <select className="input grow" style={{ minWidth: 200 }} aria-label="Persoon toevoegen" value={addId} onChange={(e) => setAddId(e.target.value)}>
-              <option value="">Kies een persoon om toe te voegen…</option>
-              {candidates.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name} ({u.email})
-                </option>
-              ))}
-            </select>
-            <select className="input" style={{ width: "auto" }} aria-label="Rol" value={addRole} onChange={(e) => setAddRole(e.target.value as Role)}>
-              <option value="deelnemer">Deelnemer</option>
-              <option value="secretaris">Secretaris</option>
-            </select>
-            <Button type="submit" icon="plus" disabled={!addId}>
-              Toevoegen
-            </Button>
-          </form>
+          <h3>Deelnemer toevoegen</h3>
+          <Form submitLabel="Toevoegen" onSubmit={add}>
+            <div className="form-row">
+              <Field label="E-mailadres">
+                <input className="input" type="email" required maxLength={200} value={email} onChange={(e) => setEmail(e.target.value)} />
+              </Field>
+              <Field label="Naam" hint="Alleen nodig als deze persoon nog geen account heeft.">
+                <input className="input" maxLength={120} value={name} onChange={(e) => setName(e.target.value)} />
+              </Field>
+              <Field label="Rol">
+                <select className="input" value={role} onChange={(e) => setRole(e.target.value as Role)}>
+                  <option value="deelnemer">Deelnemer</option>
+                  <option value="secretaris">Secretaris</option>
+                </select>
+              </Field>
+            </div>
+          </Form>
           <p className="small muted">
-            De secretaris beheert agenda, notulen, besluiten en deelnemers. Deelnemers lezen mee, leveren stukken aan en melden hun eigen acties af.{" "}
-            {user.isAdmin ? (
-              <>
-                Staat iemand er niet tussen? Maak eerst een account aan onder <Link to="/beheer">Beheer</Link>.
-              </>
-            ) : (
-              "Staat iemand er niet tussen? Vraag de beheerder om een account aan te maken."
-            )}
+            Heeft iemand al een account, dan wordt die direct gekoppeld. Anders krijg je een uitnodigingslink om te versturen. De secretaris beheert agenda,
+            notulen, besluiten en deelnemers; deelnemers lezen mee, leveren stukken aan en melden hun eigen acties af.
           </p>
         </div>
       )}
+      {link && <LinkModal link={link} onClose={() => setLink(null)} />}
     </section>
   );
 }
@@ -248,6 +268,13 @@ export default function OverlegPage() {
   const [allActions, setAllActions] = useState(false);
   const actions = useLoad<{ actions: Action[] }>(tab === "acties" ? `/api/actions?overleg=${id}${allActions ? "&status=alle" : ""}` : null);
   const [modal, setModal] = useState<"meeting" | "edit" | null>(null);
+
+  // Geopend via een directe link: werk dan verder in de organisatie van dit overleg.
+  const { ensureOrg } = useAuth();
+  const organisationId = data?.overleg.organisationId;
+  useEffect(() => {
+    if (organisationId) ensureOrg(organisationId);
+  }, [organisationId, ensureOrg]);
 
   const canEdit = data?.role === "secretaris";
   const now = Date.now() - 3 * 3600_000;

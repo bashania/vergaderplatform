@@ -10,13 +10,22 @@ export class ApiError extends Error {
 
 type Options = { method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; body?: unknown };
 
+/** De organisatie waarin de gebruiker werkt; gaat mee met elk verzoek zodat overzichten daarop filteren. */
+let organisationId: string | null = null;
+export function setApiOrganisation(id: string | null) {
+  organisationId = id;
+}
+
 export async function api<T = unknown>(path: string, { method = "GET", body }: Options = {}): Promise<T> {
   let res: Response;
   try {
     res = await fetch(path, {
       method,
       credentials: "same-origin",
-      headers: body !== undefined ? { "content-type": "application/json" } : undefined,
+      headers: {
+        ...(body !== undefined ? { "content-type": "application/json" } : {}),
+        ...(organisationId ? { "x-organisation": organisationId } : {}),
+      },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   } catch {

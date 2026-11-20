@@ -2,6 +2,7 @@ import type { Config, Context } from "@netlify/functions";
 import { handle } from "../../server/router";
 import "../../server/routes/auth";
 import "../../server/routes/admin";
+import "../../server/routes/organisations";
 import "../../server/routes/overleg";
 import "../../server/routes/meetings";
 import "../../server/routes/records";

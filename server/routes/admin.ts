@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createUserToken } from "../auth";
 import { dbHost, q, q1 } from "../db";
-import { bad, email, env, forbidden, HttpError, json, notFound, oneOf, str, uuid } from "../http";
+import { bad, email, env, HttpError, json, notFound, optStr, str, uuid } from "../http";
 import { store } from "../files";
 import { route } from "../router";
 
@@ -46,33 +46,23 @@ route.get(
   { public: true },
 );
 
-const ROLES = ["secretaris", "deelnemer"] as const;
-
 route.get(
   "/api/users",
   async () => {
     const users = await q(
       `SELECT u.id, u.email, u.name, u.is_admin, u.active, u.created_at, u.last_login_at,
               (u.password_hash IS NOT NULL) AS has_password,
-              COALESCE((SELECT json_agg(json_build_object('overlegId', m.overleg_id, 'overlegName', o.name, 'role', m.role) ORDER BY o.name)
-                          FROM memberships m JOIN overleggen o ON o.id = m.overleg_id
-                         WHERE m.user_id = u.id), '[]'::json) AS memberships
+              COALESCE((SELECT json_agg(org.name ORDER BY lower(org.name))
+                          FROM organisations org
+                         WHERE EXISTS (SELECT 1 FROM organisation_admins a WHERE a.organisation_id = org.id AND a.user_id = u.id)
+                            OR EXISTS (SELECT 1 FROM memberships m JOIN overleggen o ON o.id = m.overleg_id
+                                        WHERE o.organisation_id = org.id AND m.user_id = u.id)), '[]'::json) AS organisations
          FROM users u ORDER BY lower(u.name)`,
     );
     return { users };
   },
   { admin: true },
 );
-
-/** Namenlijst om leden aan een overleg toe te voegen (voor beheerders en secretarissen). */
-route.get("/api/users/directory", async (c) => {
-  if (!c.user.isAdmin) {
-    const sec = await q1(`SELECT 1 AS x FROM memberships WHERE user_id = $1 AND role = 'secretaris' LIMIT 1`, [c.user.id]);
-    if (!sec) throw forbidden();
-  }
-  const users = await q(`SELECT id, name, email FROM users WHERE active ORDER BY lower(name)`);
-  return { users };
-});
 
 route.post(
   "/api/users",
@@ -81,25 +71,11 @@ route.post(
     const name = str(b.name, "Naam", { max: 120 });
     const mail = email(b.email);
     const isAdmin = b.isAdmin === true;
-    const memberships = Array.isArray(b.memberships) ? b.memberships : [];
-    const parsed = memberships.map((m: Record<string, unknown>) => ({
-      overlegId: uuid(m?.overlegId, "Overleg"),
-      role: oneOf(m?.role, "Rol", ROLES),
-    }));
-
     if (await q1(`SELECT 1 AS x FROM users WHERE lower(email) = $1`, [mail])) {
       throw new HttpError(409, "Er bestaat al een account met dit e-mailadres.");
     }
     const id = randomUUID();
     await q(`INSERT INTO users (id, email, name, is_admin) VALUES ($1, $2, $3, $4)`, [id, mail, name, isAdmin]);
-    for (const m of parsed) {
-      await q(
-        `INSERT INTO memberships (overleg_id, user_id, role)
-         SELECT o.id, $2, $3 FROM overleggen o WHERE o.id = $1
-         ON CONFLICT DO NOTHING`,
-        [m.overlegId, id, m.role],
-      );
-    }
     const link = await createUserToken(id, "invite", c.user.id);
     return { id, ...link };
   },
@@ -163,7 +139,7 @@ route.put(
   "/api/settings",
   async (c) => {
     const b = await c.body();
-    const orgName = str(b.orgName, "Naam organisatie", { max: 120 });
+    const orgName = optStr(b.orgName, "Naam", 120);
     await q(
       `INSERT INTO settings (key, value) VALUES ('orgName', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
       [orgName],

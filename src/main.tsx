@@ -9,7 +9,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth";
-import Layout from "./Layout";
+import Layout, { RequireOrganisation } from "./Layout";
 import AccountPage from "./pages/Account";
 import ActiesPage from "./pages/Acties";
 import BeheerPage from "./pages/Beheer";
@@ -17,6 +17,7 @@ import BesluitenPage from "./pages/Besluiten";
 import DashboardPage from "./pages/Dashboard";
 import { LoginPage, SetupPage, WelcomePage } from "./pages/Login";
 import MeetingPage from "./pages/Meeting";
+import OrganisatiePage from "./pages/Organisatie";
 import OverlegPage from "./pages/Overleg";
 import OverleggenPage from "./pages/Overleggen";
 import ZoekenPage from "./pages/Zoeken";
@@ -40,13 +41,16 @@ function App() {
       <Route path="/welkom" element={<WelcomePage />} />
       {user ? (
         <Route element={<Layout />}>
-          <Route index element={<DashboardPage />} />
-          <Route path="overleggen" element={<OverleggenPage />} />
-          <Route path="overleggen/:id" element={<OverlegPage />} />
-          <Route path="vergaderingen/:id" element={<MeetingPage />} />
-          <Route path="besluiten" element={<BesluitenPage />} />
-          <Route path="acties" element={<ActiesPage />} />
-          <Route path="zoeken" element={<ZoekenPage />} />
+          <Route element={<RequireOrganisation />}>
+            <Route index element={<DashboardPage />} />
+            <Route path="overleggen" element={<OverleggenPage />} />
+            <Route path="overleggen/:id" element={<OverlegPage />} />
+            <Route path="vergaderingen/:id" element={<MeetingPage />} />
+            <Route path="besluiten" element={<BesluitenPage />} />
+            <Route path="acties" element={<ActiesPage />} />
+            <Route path="zoeken" element={<ZoekenPage />} />
+            <Route path="organisatie" element={<OrganisatiePage />} />
+          </Route>
           <Route path="account" element={<AccountPage />} />
           {user.isAdmin && <Route path="beheer" element={<BeheerPage />} />}
           <Route path="*" element={<NotFound />} />

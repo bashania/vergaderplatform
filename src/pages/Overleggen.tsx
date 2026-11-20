@@ -1,16 +1,16 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
-import { useUser } from "../auth";
+import { useAuth } from "../auth";
 import { fmtDateTime, type Overleg } from "../lib";
 import { Button, Empty, Field, Form, Loader, Modal, useLoad } from "../ui";
 
-function NewOverleg({ onClose }: { onClose: () => void }) {
+function NewOverleg({ organisation, onClose }: { organisation: string; onClose: () => void }) {
   const navigate = useNavigate();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   return (
-    <Modal title="Nieuw overleg" onClose={onClose}>
+    <Modal title={`Nieuw overleg bij ${organisation}`} onClose={onClose}>
       <Form
         submitLabel="Aanmaken"
         onCancel={onClose}
@@ -19,7 +19,7 @@ function NewOverleg({ onClose }: { onClose: () => void }) {
           navigate(`/overleggen/${id}?tab=leden`);
         }}
       >
-        <Field label="Naam" hint="Bijvoorbeeld: MT-overleg, bestuursvergadering, projectoverleg.">
+        <Field label="Naam" hint="Bijvoorbeeld: bestuursvergadering, MT-overleg, projectoverleg.">
           <input className="input" required autoFocus maxLength={120} value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
         <Field label="Omschrijving (optioneel)" hint="Doel, frequentie of vaste afspraken van dit overleg.">
@@ -32,9 +32,10 @@ function NewOverleg({ onClose }: { onClose: () => void }) {
 }
 
 export default function OverleggenPage() {
-  const user = useUser();
+  const { org } = useAuth();
   const { data, loading, error } = useLoad<{ overleggen: Overleg[] }>("/api/overleggen");
   const [creating, setCreating] = useState(false);
+  const canCreate = org?.role === "beheerder";
   const active = data?.overleggen.filter((o) => !o.archived) ?? [];
   const archived = data?.overleggen.filter((o) => o.archived) ?? [];
 
@@ -43,9 +44,11 @@ export default function OverleggenPage() {
       <div className="page-head">
         <div>
           <h1>Overleggen</h1>
-          <p className="lead">Elk overleg heeft zijn eigen deelnemers, vergaderingen, besluitenlijst en actielijst.</p>
+          <p className="lead">
+            De overleggen van <strong>{org?.name}</strong> waar je aan deelneemt. Elk overleg heeft eigen deelnemers, vergaderingen, besluiten en acties.
+          </p>
         </div>
-        {user.isAdmin && (
+        {canCreate && (
           <Button icon="plus" onClick={() => setCreating(true)}>
             Nieuw overleg
           </Button>
@@ -61,14 +64,14 @@ export default function OverleggenPage() {
           </div>
         ) : (
           <div className="card">
-            <Empty title="Je neemt nog aan geen overleg deel">
-              {user.isAdmin ? "Maak het eerste overleg aan met de knop rechtsboven." : "Vraag de beheerder om je aan een overleg toe te voegen."}
+            <Empty title="Nog geen overleg">
+              {canCreate ? "Maak het eerste overleg aan met de knop rechtsboven." : "Vraag de secretaris van je overleg om je toe te voegen."}
             </Empty>
           </div>
         )}
         {archived.length > 0 && (
           <section className="stack">
-            <h2>Gearchiveerd</h2>
+            <h2 className="section-title">Gearchiveerd</h2>
             <div className="grid-2">
               {archived.map((o) => (
                 <OverlegCard key={o.id} o={o} />
@@ -77,7 +80,7 @@ export default function OverleggenPage() {
           </section>
         )}
       </Loader>
-      {creating && <NewOverleg onClose={() => setCreating(false)} />}
+      {creating && org && <NewOverleg organisation={org.name} onClose={() => setCreating(false)} />}
     </div>
   );
 }

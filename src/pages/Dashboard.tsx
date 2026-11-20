@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { useUser } from "../auth";
+import { useAuth, useUser } from "../auth";
 import { ActionList } from "../components/Records";
 import { DocList } from "../components/Docs";
 import {
@@ -64,6 +64,7 @@ function greeting() {
 
 export default function DashboardPage() {
   const user = useUser();
+  const { org } = useAuth();
   const { data, loading, error, reload } = useLoad<Dashboard>("/api/dashboard");
   return (
     <div className="page">
@@ -72,7 +73,9 @@ export default function DashboardPage() {
           <h1>
             {greeting()}, {firstName(user.name)}
           </h1>
-          <p className="lead">Je komende vergaderingen, je openstaande acties en de laatste stukken.</p>
+          <p className="lead">
+            Je komende vergaderingen, openstaande acties en de laatste stukken van <strong>{org?.name}</strong>.
+          </p>
         </div>
       </div>
 
@@ -92,7 +95,7 @@ export default function DashboardPage() {
                 </ul>
               ) : (
                 <Empty title="Geen vergaderingen gepland">
-                  {user.isAdmin ? (
+                  {org?.role === "beheerder" ? (
                     <>
                       Maak een <Link to="/overleggen">overleg</Link> aan en plan daar de eerste vergadering.
                     </>
