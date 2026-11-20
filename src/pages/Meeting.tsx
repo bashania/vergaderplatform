@@ -7,6 +7,7 @@ import { ProposalsModal, useAi } from "../components/Ai";
 import { AgendaPaste } from "../components/AgendaPaste";
 import { DocList, UploadButton } from "../components/Docs";
 import { ActionItem, ActionModal, DecisionModal } from "../components/Records";
+import { MeetingMailModal } from "../components/Mail";
 import { MeetingSuggestions } from "../components/Suggestions";
 import { TranscriptCard } from "../components/Transcript";
 import {
@@ -37,6 +38,7 @@ type ModalState =
   | { type: "decision"; itemId: string | null; decision?: Decision }
   | { type: "action"; itemId: string | null; action?: Action }
   | { type: "proposals" }
+  | { type: "mail"; kind: "agenda" | "verslag" }
   | null;
 
 // ---------- formulieren ----------
@@ -296,7 +298,7 @@ function print(mode: "agenda" | "verslag") {
 export default function MeetingPage() {
   const { id } = useParams();
   const user = useUser();
-  const { ensureOrg } = useAuth();
+  const { ensureOrg, mailEnabled } = useAuth();
   const navigate = useNavigate();
   const run = useRun();
   const ai = useAi();
@@ -579,10 +581,16 @@ export default function MeetingPage() {
         )}
         {isSec && meeting.status === "gepubliceerd" && (
           <>
-            <a className="btn secondary" href={mailto}>
-              <Icon name="mail" size={17} />
-              Deelnemers mailen
-            </a>
+            {mailEnabled ? (
+              <Button variant="secondary" icon="mail" disabled={!members.length} onClick={() => setModal({ type: "mail", kind: "agenda" })}>
+                Agenda mailen
+              </Button>
+            ) : (
+              <a className="btn secondary" href={mailto}>
+                <Icon name="mail" size={17} />
+                Deelnemers mailen
+              </a>
+            )}
             <Button
               variant={isLive ? "secondary" : "primary"}
               icon="lock"
@@ -598,6 +606,11 @@ export default function MeetingPage() {
               Terug naar concept
             </Button>
           </>
+        )}
+        {isSec && locked && mailEnabled && (
+          <Button icon="mail" disabled={!members.length} onClick={() => setModal({ type: "mail", kind: "verslag" })}>
+            Verslag mailen
+          </Button>
         )}
         {isSec && locked && (
           <Button variant="secondary" onClick={() => setStatus("gepubliceerd", "Vergadering heropend")}>
@@ -842,6 +855,7 @@ export default function MeetingPage() {
       {modal?.type === "action" && (
         <ActionModal meetingId={meeting.id} agendaItemId={modal.itemId} action={modal.action} members={members} onClose={() => setModal(null)} onSaved={saved} />
       )}
+      {modal?.type === "mail" && <MeetingMailModal meeting={meeting} kind={modal.kind} count={members.length} onClose={() => setModal(null)} />}
       {modal?.type === "proposals" && <ProposalsModal meetingId={meeting.id} items={items} members={members} onClose={() => setModal(null)} onSaved={saved} />}
     </div>
   );

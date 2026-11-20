@@ -1,15 +1,11 @@
 import { randomUUID } from "node:crypto";
-import {
-  generateAuthenticationOptions,
-  generateRegistrationOptions,
-  verifyAuthenticationResponse,
-  verifyRegistrationResponse,
-  type AuthenticationResponseJSON,
-  type RegistrationResponseJSON,
-} from "@simplewebauthn/server";
-import { isoBase64URL } from "@simplewebauthn/server/helpers";
+import type { AuthenticationResponseJSON, RegistrationResponseJSON } from "@simplewebauthn/server";
 import { q, q1 } from "./db";
 import { bad, env, HttpError, optStr } from "./http";
+
+// Pas geladen bij inloggen of registreren met een passkey: de meeste verzoeken hebben dit niet nodig.
+const wa = () => import("@simplewebauthn/server");
+const helpers = () => import("@simplewebauthn/server/helpers");
 
 /**
  * Passkeys (WebAuthn).
@@ -54,7 +50,7 @@ async function takeChallenge(rawId: unknown, kind: "register" | "login", userId:
 
 export async function registrationOptions(url: URL, user: { id: string; email: string; name: string }) {
   const existing = await q<{ id: string; transports: string }>(`SELECT id, transports FROM passkeys WHERE user_id = $1`, [user.id]);
-  const options = await generateRegistrationOptions({
+  const options = await (await wa()).generateRegistrationOptions({
     rpName: RP_NAME,
     rpID: rp(url).id,
     userName: user.email,
@@ -77,7 +73,7 @@ export async function verifyRegistration(url: URL, userId: string, body: Record<
   const name = optStr(body.name, "Naam", 60) || "Passkey";
   let result;
   try {
-    result = await verifyRegistrationResponse({
+    result = await (await wa()).verifyRegistrationResponse({
       response: body.response as RegistrationResponseJSON,
       expectedChallenge,
       expectedOrigin: rp(url).origin,
@@ -92,7 +88,7 @@ export async function verifyRegistration(url: URL, userId: string, body: Record<
   const { credential } = result.registrationInfo;
   return {
     id: credential.id,
-    publicKey: isoBase64URL.fromBuffer(credential.publicKey),
+    publicKey: (await helpers()).isoBase64URL.fromBuffer(credential.publicKey),
     counter: credential.counter,
     transports: (credential.transports ?? []).join(","),
     name,
@@ -112,7 +108,7 @@ export async function storePasskey(userId: string, p: NewPasskey): Promise<void>
 
 export async function loginOptions(url: URL) {
   // Geen lijst met toegestane passkeys: de passkey zelf bepaalt welk account inlogt.
-  const options = await generateAuthenticationOptions({ rpID: rp(url).id, userVerification: "required" });
+  const options = await (await wa()).generateAuthenticationOptions({ rpID: rp(url).id, userVerification: "required" });
   return { challengeId: await saveChallenge(options.challenge, "login", null), options };
 }
 
@@ -130,14 +126,14 @@ export async function verifyLogin(url: URL, body: Record<string, unknown>): Prom
   if (!pk) throw new HttpError(401, "Deze passkey hoort niet (meer) bij een account op dit platform.");
   let result;
   try {
-    result = await verifyAuthenticationResponse({
+    result = await (await wa()).verifyAuthenticationResponse({
       response,
       expectedChallenge,
       expectedOrigin: rp(url).origin,
       expectedRPID: rp(url).id,
       credential: {
         id: pk.id,
-        publicKey: isoBase64URL.toBuffer(pk.publicKey),
+        publicKey: (await helpers()).isoBase64URL.toBuffer(pk.publicKey),
         counter: Number(pk.counter),
         transports: pk.transports ? (pk.transports.split(",") as never) : undefined,
       },

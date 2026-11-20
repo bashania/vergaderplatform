@@ -1,4 +1,3 @@
-import nodemailer from "nodemailer";
 import { q, q1 } from "./db";
 import { currentDeployContext } from "./files";
 import { bad, email as emailAddress, HttpError, int, oneOf, optStr, str } from "./http";
@@ -108,6 +107,7 @@ export async function mailer(): Promise<Mailer | null> {
   const smtp = await smtpSettings();
   if (!smtp) return null;
   const brand = (await q1<{ value: string }>(`SELECT value FROM settings WHERE key = 'orgName'`))?.value || "Vergaderplatform";
+  const nodemailer = (await import("nodemailer")).default;
   const transport = nodemailer.createTransport({
     host: smtp.host,
     port: smtp.port,

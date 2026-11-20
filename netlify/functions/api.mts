@@ -14,6 +14,7 @@ import "../../server/routes/transcripts";
 import "../../server/routes/calendar";
 import "../../server/routes/suggestions";
 import "../../server/routes/mail";
+import "../../server/routes/insights";
 
 // Eén functie voor de hele API: gedeelde code, één koude start.
 export default (req: Request, context: Context) => handle(req, context);

@@ -896,6 +896,37 @@ step("5d. Agenda-abonnement, punten aandragen en e-mail");
   await new Promise((r) => smtp.close(r));
 }
 
+step("5e. Inzicht en vraag het archief");
+{
+  const iPath = `/api/organisations/${org1}/insights`;
+  check("inzicht alleen voor beheerders", (await dee.client.get(iPath)).status === 403 && (await bui.client.get(iPath)).status === 404);
+  const ins = await admin.get(`${iPath}?months=12`);
+  const mt = ins.data.overleggen?.find((o) => o.id === overlegId);
+  check("inzicht per overleg", ins.status === 200 && !!mt && mt.decisions >= 1 && mt.actionsOpen >= 1 && mt.actionsLate >= 1 && mt.actionsCreated >= 1, JSON.stringify(mt));
+  check("vergadering in de toekomst telt nog niet mee", mt.meetings === 0 && mt.plannedMin === 0);
+  check("openstaande acties per persoon", ins.data.people.some((p) => p.id === dee.id && p.open >= 1 && p.late >= 1), JSON.stringify(ins.data.people));
+  check("ongeldige periode geweigerd", (await admin.get(`${iPath}?months=99`)).status === 400);
+  check("deelnemer mag het uurtarief niet zetten", (await dee.client.patch(`/api/organisations/${org1}`, { hourlyRate: 65 })).status === 403);
+  check("uurtarief opslaan", (await admin.patch(`/api/organisations/${org1}`, { hourlyRate: 65 })).status === 200 && (await admin.get(iPath)).data.hourlyRate === 65);
+  check("ongeldig uurtarief geweigerd", (await admin.patch(`/api/organisations/${org1}`, { hourlyRate: 0 })).status === 400);
+  check("uurtarief weer leeg", (await admin.patch(`/api/organisations/${org1}`, { hourlyRate: null })).status === 200 && (await admin.get(iPath)).data.hourlyRate === null);
+
+  const question = { question: "Wat is er besloten over de begroting van 2027?" };
+  check("assistent uit: geen vragen aan het archief", (await dee.client.post("/api/ai/ask", question)).status === 403);
+  await admin.patch(`/api/organisations/${org1}`, { aiEnabled: true });
+  const answer = await dee.client.post("/api/ai/ask", question);
+  check("antwoord uit het archief met bron", answer.status === 200 && answer.data.answer.toLowerCase().includes("begroting") && answer.data.sources.length === 1, JSON.stringify(answer.data).slice(0, 400));
+  check("bron verwijst naar de vergadering", answer.data.sources[0]?.meetingId === meetingId && ["besluit", "notulen", "actie"].includes(answer.data.sources[0]?.type));
+  check("te korte vraag geweigerd", (await dee.client.post("/api/ai/ask", { question: "Hoe?" })).status === 422);
+  // Iemand van buiten die de organisatie in de header zet, krijgt niets uit het archief te zien.
+  const outsider = new Client();
+  outsider.cookie = bui.client.cookie;
+  outsider.org = org1;
+  const leaked = await outsider.post("/api/ai/ask", question);
+  check("buitenstaander krijgt niets uit het archief", leaked.status === 200 && leaked.data.sources.length === 0 && !leaked.data.answer.toLowerCase().includes("begroting"), JSON.stringify(leaked.data));
+  await admin.patch(`/api/organisations/${org1}`, { aiEnabled: false });
+}
+
 step("6. Afronden, vergrendeling en overnemen");
 let nextMeetingId;
 {

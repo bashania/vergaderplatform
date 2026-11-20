@@ -1372,6 +1372,40 @@ dialog.modal::backdrop {
   flex-wrap: wrap;
 }
 
+/* ---------- inzicht ---------- */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+}
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.stat b {
+  font-size: 1.9rem;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.stat span {
+  font-weight: 600;
+  color: var(--text-2);
+}
+.stat small {
+  color: var(--text-3);
+}
+.stat.warm b {
+  color: var(--warm);
+}
+
 /* ---------- transcript ---------- */
 .transcript-text {
   max-height: 62vh;

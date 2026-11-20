@@ -1,4 +1,5 @@
 import { loadMeeting } from "../access";
+import { safeEqual } from "../auth";
 import { q, q1 } from "../db";
 import { currentDeployContext } from "../files";
 import { bad, forbidden, HttpError, oneOf, optStr, uuid } from "../http";
@@ -271,7 +272,7 @@ async function daily(m: Mailer, origin: string, today: string): Promise<{ meetin
 route.post(
   "/api/background/daily",
   async (c) => {
-    if (!hasSecretKey() || c.req.headers.get("x-task-key") !== taskKey("daily")) throw forbidden("Geen toegang.");
+    if (!hasSecretKey() || !safeEqual(c.req.headers.get("x-task-key") ?? "", taskKey("daily"))) throw forbidden("Geen toegang.");
     const m = await mailer();
     if (!m) return { skipped: "geen mailserver" };
     try {

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { requireOrgAdmin } from "../access";
 import { activated } from "../auth";
 import { q, q1 } from "../db";
-import { bad, forbidden, HttpError, str, uuid } from "../http";
+import { bad, forbidden, HttpError, int, str, uuid } from "../http";
 import { findOrInviteUser, reinvite } from "../people";
 import { route } from "../router";
 import { withMail } from "./mail";
@@ -70,6 +70,12 @@ route.patch("/api/organisations/:id", async (c) => {
     if (!c.user.strong) throw forbidden("Log in met een passkey om dit te wijzigen.");
     vals.push(b.requirePasskey === true);
     sets.push(`require_passkey = $${vals.length}`);
+  }
+  if (b.hourlyRate !== undefined) {
+    // Uurtarief voor de schatting van vergaderkosten op de pagina Inzicht; leeg laten kan.
+    await requireOrgAdmin(c.user, id);
+    vals.push(b.hourlyRate === null || b.hourlyRate === "" ? null : int(b.hourlyRate, "Uurtarief", 1, 1000));
+    sets.push(`hourly_rate = $${vals.length}`);
   }
   if (b.aiEnabled !== undefined) {
     // Of notulen en stukken naar een taalmodel mogen, beslist de organisatie zelf, niet de platformbeheerder.

@@ -36,3 +36,6 @@ CREATE INDEX mail_log_at_idx ON mail_log (at DESC);
 
 -- Herinneringen (vergadering morgen, acties die aflopen) kan iedereen voor zichzelf uitzetten.
 ALTER TABLE users ADD COLUMN mail_reminders boolean NOT NULL DEFAULT true;
+
+-- Uurtarief (hele euro's) voor de schatting van vergaderkosten op de pagina Inzicht. Leeg = geen schatting.
+ALTER TABLE organisations ADD COLUMN hourly_rate integer;

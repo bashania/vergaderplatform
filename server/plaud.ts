@@ -1,6 +1,4 @@
 import { createHash, randomBytes } from "node:crypto";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { q, q1 } from "./db";
 import { currentDeployContext } from "./files";
 import { env, HttpError } from "./http";
@@ -212,6 +210,11 @@ function payload(text: string): unknown {
 }
 
 async function session<T>(token: string, work: (call: Call) => Promise<T>): Promise<T> {
+  // Pas hier geladen: alleen wie iets uit Plaud ophaalt, heeft de MCP-bibliotheek nodig.
+  const [{ Client }, { StreamableHTTPClientTransport }] = await Promise.all([
+    import("@modelcontextprotocol/sdk/client/index.js"),
+    import("@modelcontextprotocol/sdk/client/streamableHttp.js"),
+  ]);
   const transport = new StreamableHTTPClientTransport(new URL(mcpUrl()), { requestInit: { headers: { authorization: `Bearer ${token}` } } });
   const client = new Client({ name: "vergaderplatform", version: "1.0.0" });
   try {
