@@ -14,7 +14,9 @@ type AdminUser = {
   active: boolean;
   createdAt: string;
   lastLoginAt: string | null;
-  hasPassword: boolean;
+  activated: boolean;
+  /** Aantal passkeys van dit account. */
+  passkeys: number;
   organisations: string[];
 };
 
@@ -248,6 +250,7 @@ function EditUser({ target, onClose, onSaved }: { target: AdminUser; onClose: ()
   const [email, setEmail] = useState(target.email);
   const [isAdmin, setIsAdmin] = useState(target.isAdmin);
   const [active, setActive] = useState(target.active);
+  const run = useRun();
   return (
     <Modal title={`${target.name} bewerken`} onClose={onClose}>
       <Form
@@ -258,6 +261,21 @@ function EditUser({ target, onClose, onSaved }: { target: AdminUser; onClose: ()
           await api(`/api/users/${target.id}`, { method: "PATCH", body });
           onSaved();
         }}
+        extra={
+          // Herstel bij een verloren apparaat: passkeys wissen, daarna een resetlink sturen.
+          target.passkeys > 0 &&
+          !self && (
+            <Button
+              variant="danger"
+              onClick={async () => {
+                if (!window.confirm(`Alle passkeys van ${target.name} wissen? Doe dit alleen als diegene zijn apparaat kwijt is. Stuur daarna een resetlink.`)) return;
+                if (await run(() => api(`/api/users/${target.id}/passkeys`, { method: "DELETE" }), "Passkeys gewist")) onSaved();
+              }}
+            >
+              Passkeys wissen
+            </Button>
+          )
+        }
       >
         <div className="form-row">
           <Field label="Naam">
@@ -331,12 +349,13 @@ function Users() {
                     <div className="row" style={{ gap: 4 }}>
                       {!u.active ? (
                         <span className="badge">Geblokkeerd</span>
-                      ) : u.hasPassword ? (
+                      ) : u.activated ? (
                         <span className="badge accent">Actief</span>
                       ) : (
                         <span className="badge warm">Uitgenodigd</span>
                       )}
                       {u.isAdmin && <span className="badge info">Platformbeheerder</span>}
+                      {u.passkeys > 0 && <span className="badge accent">Passkey</span>}
                     </div>
                   </td>
                   <td className="small">{u.organisations.length ? u.organisations.map((o) => <div key={o}>{o}</div>) : "Geen"}</td>
@@ -345,7 +364,7 @@ function Users() {
                     <div className="row" style={{ gap: 2, flexWrap: "nowrap", justifyContent: "flex-end" }}>
                       {u.active && (
                         <Button small variant="ghost" icon="mail" onClick={() => newLink(u)}>
-                          {u.hasPassword ? "Resetlink" : "Uitnodigingslink"}
+                          {u.activated ? "Resetlink" : "Uitnodigingslink"}
                         </Button>
                       )}
                       <Button small variant="ghost" icon="edit" aria-label={`${u.name} bewerken`} onClick={() => setEditing(u)} />

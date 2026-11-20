@@ -34,7 +34,14 @@ export async function api<T = unknown>(path: string, { method = "GET", body }: O
   const data = (await res.json().catch(() => null)) as (T & { error?: string }) | null;
   if (!res.ok) {
     // Sessie verlopen: terug naar het inlogscherm (niet bij de inlogpoging zelf).
-    if (res.status === 401 && !path.startsWith("/api/login")) window.dispatchEvent(new Event("vp:unauthorized"));
+    if (res.status === 401 && !path.startsWith("/api/login") && !path.startsWith("/api/passkeys/login")) {
+      window.dispatchEvent(new Event("vp:unauthorized"));
+    }
+    // De organisatie eist een passkey: schakel naar die organisatie, daar staat hoe je verder komt.
+    const info = data as { code?: string; organisationId?: string } | null;
+    if (res.status === 403 && info?.code === "passkey_required" && info.organisationId) {
+      window.dispatchEvent(new CustomEvent("vp:passkey-required", { detail: info.organisationId }));
+    }
     throw new ApiError(res.status, data?.error ?? "Er ging iets mis. Probeer het opnieuw.");
   }
   return data as T;

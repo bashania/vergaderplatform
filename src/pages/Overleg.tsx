@@ -186,13 +186,13 @@ function Members({ data, canEdit, onChanged }: { data: OverlegDetail; canEdit: b
                 <strong>{m.name}</strong>
                 <div className="meta">
                   <span>{m.email}</span>
-                  {!m.hasPassword && <span className="badge warm">Uitnodiging nog niet geaccepteerd</span>}
+                  {!m.activated && <span className="badge warm">Uitnodiging nog niet geaccepteerd</span>}
                   {m.active === false && <span className="badge">Geblokkeerd</span>}
                 </div>
               </div>
               {canEdit ? (
                 <div className="row" style={{ gap: 4 }}>
-                  {!m.hasPassword && m.active !== false && (
+                  {!m.activated && m.active !== false && (
                     <Button small variant="ghost" icon="mail" onClick={() => invite(m)}>
                       Uitnodigingslink
                     </Button>

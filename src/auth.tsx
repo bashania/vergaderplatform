@@ -82,9 +82,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void refresh();
     const onUnauthorized = () => setSession((s) => ({ ...s, user: null, organisations: [] }));
+    // Een pagina uit een organisatie met passkey-eis geopend: werk in die organisatie verder,
+    // daar legt het scherm uit hoe je met een passkey binnenkomt.
+    // De sessie opnieuw ophalen: de eis kan zijn ingesteld terwijl deze gebruiker al aan het werk was.
+    const onPasskeyRequired = (e: Event) => {
+      selectOrg((e as CustomEvent<string>).detail);
+      void refresh();
+    };
     window.addEventListener("vp:unauthorized", onUnauthorized);
-    return () => window.removeEventListener("vp:unauthorized", onUnauthorized);
-  }, [refresh]);
+    window.addEventListener("vp:passkey-required", onPasskeyRequired);
+    return () => {
+      window.removeEventListener("vp:unauthorized", onUnauthorized);
+      window.removeEventListener("vp:passkey-required", onPasskeyRequired);
+    };
+  }, [refresh, selectOrg]);
 
   return (
     <AuthContext.Provider value={{ ...session, loading, org, selectOrg, ensureOrg, refresh, logout }}>{children}</AuthContext.Provider>

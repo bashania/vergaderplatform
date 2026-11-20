@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { ACC, accParams, overlegAccess, requireOrgAdmin, requireOrgId, requireOverleg } from "../access";
+import { activated } from "../auth";
 import { q, q1 } from "../db";
 import { bad, forbidden, HttpError, notFound, oneOf, optStr, str, uuid } from "../http";
 import { findOrInviteUser, reinvite } from "../people";
@@ -52,7 +53,7 @@ route.get("/api/overleggen/:id", async (c) => {
       [id],
     ),
     q(
-      `SELECT u.id, u.name, u.email, m.role, u.active, (u.password_hash IS NOT NULL) AS has_password
+      `SELECT u.id, u.name, u.email, m.role, u.active, ${activated("u")} AS activated
          FROM memberships m JOIN users u ON u.id = m.user_id
         WHERE m.overleg_id = $1 ORDER BY lower(u.name)`,
       [id],

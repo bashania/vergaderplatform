@@ -1,6 +1,7 @@
 // End-to-end test van de API. Draait tegen een lege (of eerder door dit script gevulde) database.
 //   BASE=http://localhost:8888 SETUP_CODE=lokale-testcode node scripts/e2e.mjs
 import { createHash, randomBytes } from "node:crypto";
+import { SoftAuthenticator } from "./soft-authenticator.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:8888";
 const SETUP_CODE = process.env.SETUP_CODE ?? "lokale-testcode";
@@ -228,6 +229,143 @@ let org2, overleg2, bui, sec;
   check("platformbeheerder ziet wel de lijst met organisaties", (await pamClient.get("/api/organisations")).data.organisations.length >= 2);
   check("platformbeheerder kan de mensen van een organisatie niet inzien", (await pamClient.get(`/api/organisations/${org1}/people`)).status === 404);
   check("platformbeheer intrekken", (await admin.patch(`/api/users/${pam.data.id}`, { isAdmin: false, active: false })).status === 200);
+}
+
+step("2c. Passkeys: inloggen zonder wachtwoord en tweestapsverificatie per organisatie");
+{
+  /** Maakt een passkey aan voor de ingelogde gebruiker van deze client. */
+  const enrol = async (client, authenticator, name) => {
+    const opt = await client.post("/api/account/passkeys/options");
+    if (opt.status !== 200) return opt;
+    return client.post("/api/account/passkeys", { challengeId: opt.data.challengeId, response: authenticator.create(opt.data.options), name });
+  };
+  /** Logt een schone client in met een passkey. */
+  const passkeyLogin = async (authenticator, mutate) => {
+    const client = new Client();
+    const opt = await client.post("/api/passkeys/login/options");
+    const response = authenticator.get(opt.data.options);
+    if (mutate) mutate(response);
+    const res = await client.post("/api/passkeys/login", { challengeId: opt.data.challengeId, response });
+    return { client, res };
+  };
+
+  // Eerste passkey vanuit een wachtwoordsessie.
+  const secKey = new SoftAuthenticator(BASE);
+  let s = await sec.client.get("/api/session");
+  check("sessie begint zonder passkey", s.data.user.strong === false && s.data.user.passkeys === 0 && s.data.user.hasPassword === true, JSON.stringify(s.data.user));
+  const opt = await sec.client.post("/api/account/passkeys/options");
+  check("registratie eist vingerafdruk/pincode en een vindbare passkey", opt.status === 200 && opt.data.options.rp.id === new URL(BASE).hostname && opt.data.options.authenticatorSelection.userVerification === "required" && opt.data.options.authenticatorSelection.residentKey === "required", JSON.stringify(opt.data?.options?.authenticatorSelection));
+  const created = secKey.create(opt.data.options);
+  const reg = await sec.client.post("/api/account/passkeys", { challengeId: opt.data.challengeId, response: created, name: "Testlaptop" });
+  check("eerste passkey geregistreerd", reg.status === 200, JSON.stringify(reg));
+  check("uitdaging werkt maar één keer", (await sec.client.post("/api/account/passkeys", { challengeId: opt.data.challengeId, response: created, name: "x" })).status === 400);
+  s = await sec.client.get("/api/session");
+  check("sessie telt nu als passkey-sessie", s.data.user.strong === true && s.data.user.passkeys === 1, JSON.stringify(s.data.user));
+  const mine = await sec.client.get("/api/account/passkeys");
+  check("passkey staat in het account", mine.data.passkeys.length === 1 && mine.data.passkeys[0].name === "Testlaptop");
+
+  // Inloggen zonder wachtwoord.
+  const viaKey = await passkeyLogin(secKey);
+  check("inloggen met passkey, zonder wachtwoord", viaKey.res.status === 200 && viaKey.res.data.user.email === sec.email, JSON.stringify(viaKey.res));
+  check("passkey-sessie is sterk", (await viaKey.client.get("/api/session")).data.user.strong === true);
+  const tampered = await passkeyLogin(secKey, (r) => {
+    const sig = Buffer.from(r.response.signature, "base64url");
+    sig[sig.length - 1] ^= 1;
+    r.response.signature = sig.toString("base64url");
+  });
+  check("vervalste handtekening geweigerd", tampered.res.status === 401, JSON.stringify(tampered.res));
+  const phishing = new SoftAuthenticator("https://nep-vergaderplatform.example");
+  phishing.credentials = secKey.credentials;
+  check("passkey werkt niet vanaf een ander adres (phishing)", (await passkeyLogin(phishing)).res.status === 401);
+  const stranger = new SoftAuthenticator(BASE);
+  stranger.create({ challenge: "x", user: { id: "x" } });
+  check("onbekende passkey geweigerd", (await passkeyLogin(stranger)).res.status === 401);
+  const replay = new Client();
+  const o1 = await replay.post("/api/passkeys/login/options");
+  const o2 = await replay.post("/api/passkeys/login/options");
+  check("antwoord op een andere uitdaging geweigerd", (await replay.post("/api/passkeys/login", { challengeId: o2.data.challengeId, response: secKey.get(o1.data.options) })).status === 401);
+
+  // Een wachtwoordsessie blijft mogelijk, maar is niet sterk en mag niets aan de passkeys veranderen.
+  const byPassword = new Client();
+  await byPassword.post("/api/login", { email: sec.email, password: sec.password });
+  check("wachtwoordsessie is niet sterk", (await byPassword.get("/api/session")).data.user.strong === false);
+  check("extra passkey vanuit wachtwoordsessie geweigerd", (await byPassword.post("/api/account/passkeys/options")).status === 403);
+  check("passkey verwijderen vanuit wachtwoordsessie geweigerd", (await byPassword.del(`/api/account/passkeys/${created.id}`)).status === 403);
+  check("wachtwoord verwijderen vanuit wachtwoordsessie geweigerd", (await byPassword.del("/api/account/password")).status === 403);
+
+  // Passkey verplichten voor organisatie 2.
+  const adminIn2 = new Client();
+  adminIn2.cookie = admin.cookie;
+  adminIn2.org = org2;
+  check("passkey-eis instellen zonder passkey-sessie geweigerd", (await adminIn2.patch(`/api/organisations/${org2}`, { requirePasskey: true })).status === 403);
+  const adminKey = new SoftAuthenticator(BASE);
+  check("beheerder maakt passkey aan", (await enrol(admin, adminKey, "Beheer-pc")).status === 200);
+  adminIn2.cookie = admin.cookie;
+  check("passkey-eis instellen", (await adminIn2.patch(`/api/organisations/${org2}`, { requirePasskey: true })).status === 200);
+  check("sessie toont de eis", (await adminIn2.get("/api/session")).data.organisations.find((o) => o.id === org2).requirePasskey === true);
+  const besloten = (await adminIn2.post(`/api/overleggen/${overleg2}/meetings`, { title: "Besloten vergadering", startsAt: new Date(Date.now() + 9 * 86400e3).toISOString() })).data.id;
+  await adminIn2.patch(`/api/meetings/${besloten}`, { status: "gepubliceerd" });
+  const geheim = await adminIn2.upload({ meetingId: besloten }, "Cijfers.txt", "text/plain", Buffer.from("vertrouwelijk"));
+
+  // Zonder passkey-sessie is de hele organisatie dicht, op elk pad.
+  const locked = await bui.client.get("/api/overleggen");
+  check("overzicht geblokkeerd zonder passkey", locked.status === 403 && locked.data.code === "passkey_required" && locked.data.organisationId === org2, JSON.stringify(locked));
+  check("overleg geblokkeerd zonder passkey", (await bui.client.get(`/api/overleggen/${overleg2}`)).status === 403);
+  check("vergadering geblokkeerd zonder passkey", (await bui.client.get(`/api/meetings/${besloten}`)).status === 403);
+  check("stuk geblokkeerd zonder passkey", (await bui.client.raw("GET", `/api/documents/${geheim.data.id}/file`)).status === 403);
+  check("dashboard en zoeken geblokkeerd zonder passkey", (await bui.client.get("/api/dashboard")).status === 403 && (await bui.client.get("/api/search?q=besloten")).status === 403);
+  byPassword.org = org2;
+  check("ook wie een passkey heeft maar met wachtwoord inlogde is geblokkeerd", (await byPassword.get("/api/overleggen")).status === 403);
+  viaKey.client.org = org2;
+  check("passkey-sessie heeft toegang", (await viaKey.client.get("/api/overleggen")).status === 200 && (await viaKey.client.get(`/api/meetings/${besloten}`)).status === 200);
+  check("buitenstaander krijgt geen hint over de passkey-eis", (await dee.client.get(`/api/overleggen/${overleg2}`)).status === 404);
+  check("organisatie zonder eis blijft bereikbaar met wachtwoord", (await dee.client.get("/api/overleggen")).status === 200);
+  const adminByPassword = new Client();
+  await adminByPassword.post("/api/login", adminCreds);
+  adminByPassword.org = org2;
+  check("passkey-eis niet uit te zetten vanuit een wachtwoordsessie van de beheerder", (await adminByPassword.patch(`/api/organisations/${org2}`, { requirePasskey: false })).status === 403);
+
+  // Wie nog geen passkey heeft, maakt er een aan en kan direct verder.
+  const buiKey = new SoftAuthenticator(BASE);
+  check("deelnemer maakt eerste passkey aan", (await enrol(bui.client, buiKey, "Telefoon")).status === 200);
+  check("daarna direct toegang", (await bui.client.get("/api/overleggen")).status === 200 && (await bui.client.raw("GET", `/api/documents/${geheim.data.id}/file`)).status === 200);
+  const people = await adminIn2.get(`/api/organisations/${org2}/people`);
+  check("beheerder ziet wie een passkey heeft", people.data.people.find((p) => p.id === bui.id).hasPasskey === true && people.data.people.some((p) => p.hasPasskey === false));
+
+  // Uitnodiging accepteren met een passkey: een account zonder wachtwoord.
+  const pia = await adminIn2.post(`/api/overleggen/${overleg2}/members`, { email: `pia-${RUN}@test.example`, name: "Pia Passkey" });
+  const piaClient = new Client();
+  piaClient.org = org2;
+  check("uitnodiging biedt een passkey aan", (await piaClient.get(`/api/tokens/${pia.data.token}`)).data.canUsePasskey === true);
+  const piaKey = new SoftAuthenticator(BASE);
+  const po = await piaClient.post(`/api/tokens/${pia.data.token}/passkey/options`);
+  const pv = await piaClient.post(`/api/tokens/${pia.data.token}/passkey`, { challengeId: po.data.challengeId, response: piaKey.create(po.data.options), name: "iPhone" });
+  check("uitnodiging geaccepteerd met passkey", pv.status === 200 && pv.data.user.email === `pia-${RUN}@test.example`, JSON.stringify(pv));
+  const piaSession = await piaClient.get("/api/session");
+  check("account zonder wachtwoord, sterke sessie, direct toegang", piaSession.data.user.strong === true && piaSession.data.user.hasPassword === false && (await piaClient.get("/api/overleggen")).status === 200);
+  check("link daarna verbruikt", (await new Client().get(`/api/tokens/${pia.data.token}`)).status === 404);
+  const members = await adminIn2.get(`/api/overleggen/${overleg2}`);
+  check("account met alleen een passkey telt als geactiveerd", members.data.members.find((m) => m.id === pia.data.userId).activated === true);
+  check("geen nieuwe uitnodigingslink voor een account met passkey", (await adminIn2.post(`/api/overleggen/${overleg2}/members/${pia.data.userId}/invite`)).status === 403);
+  check("inloggen met wachtwoord kan niet bij een passkey-account", (await new Client().post("/api/login", { email: `pia-${RUN}@test.example`, password: "een-geraden-wachtwoord" })).status === 401);
+  const piaKeys = await piaClient.get("/api/account/passkeys");
+  check("enige passkey zonder wachtwoord is niet te verwijderen", (await piaClient.del(`/api/account/passkeys/${piaKeys.data.passkeys[0].id}`)).status === 409);
+  check("wachtwoord instellen vanuit passkey-sessie", (await piaClient.post("/api/account/password", { password: "pia-kiest-toch-een-wachtwoord" })).status === 200);
+  check("sessie blijft sterk na instellen wachtwoord", (await piaClient.get("/api/session")).data.user.strong === true);
+  check("wachtwoord weer verwijderen", (await piaClient.del("/api/account/password")).status === 200);
+
+  // Apparaat kwijt: de platformbeheerder wist de passkeys.
+  check("deelnemer mag passkeys van een ander niet wissen", (await piaClient.del(`/api/users/${bui.id}/passkeys`)).status === 403);
+  check("platformbeheerder wist passkeys", (await admin.del(`/api/users/${pia.data.userId}/passkeys`)).status === 200);
+  check("daarna is de sessie weg", (await piaClient.get("/api/session")).data.user === null);
+  check("en werkt de oude passkey niet meer", (await passkeyLogin(piaKey)).res.status === 401);
+  const again = await admin.post(`/api/users/${pia.data.userId}/token`);
+  check("nieuwe link biedt weer een passkey aan", again.status === 200 && (await new Client().get(`/api/tokens/${again.data.token}`)).data.canUsePasskey === true);
+
+  // Eis weer uit, zodat de rest van de test met wachtwoordsessies verder kan.
+  check("passkey-eis uitzetten", (await adminIn2.patch(`/api/organisations/${org2}`, { requirePasskey: false })).status === 200);
+  check("daarna weer bereikbaar met wachtwoord", (await byPassword.get("/api/overleggen")).status === 200);
+  check("opruimen besloten vergadering", (await adminIn2.del(`/api/documents/${geheim.data.id}`)).status === 200 && (await adminIn2.del(`/api/meetings/${besloten}`)).status === 200);
 }
 
 step("3. Vergadering en agenda");
@@ -474,7 +612,7 @@ step("7. Zoeken, dashboard, beheer");
 
   const users = await admin.get("/api/users");
   const me = users.data.users.find((u) => u.email === adminCreds.email);
-  check("accountlijst met organisaties", users.data.users.find((u) => u.id === dee.id).organisations.join() === "Testbedrijf" && me.hasPassword);
+  check("accountlijst met organisaties", users.data.users.find((u) => u.id === dee.id).organisations.join() === "Testbedrijf" && me.activated === true && me.passkeys === 1);
   check("eigen beheerdersrol niet in te trekken", (await admin.patch(`/api/users/${me.id}`, { isAdmin: false })).status === 400);
   check("blokkeren", (await admin.patch(`/api/users/${bui.id}`, { active: false })).status === 200);
   check("geblokkeerde gebruiker is direct uitgelogd", (await bui.client.get("/api/overleggen")).status === 401);

@@ -2,7 +2,16 @@ import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { q, q1 } from "./db";
 import { bad } from "./http";
 
-export type User = { id: string; email: string; name: string; isAdmin: boolean };
+/** strong = deze sessie is met een passkey ingelogd (telt als tweestapsverificatie). */
+export type User = { id: string; email: string; name: string; isAdmin: boolean; strong: boolean };
+export type SessionMethod = "password" | "passkey";
+
+/**
+ * SQL-voorwaarde: het account is geactiveerd, dus de uitnodiging is geaccepteerd
+ * met een wachtwoord of een passkey.
+ */
+export const activated = (alias: string) =>
+  `(${alias}.password_hash IS NOT NULL OR EXISTS (SELECT 1 FROM passkeys pk WHERE pk.user_id = ${alias}.id))`;
 
 // ---------- wachtwoorden (scrypt, OWASP-profiel N=2^15, r=8, p=3) ----------
 
@@ -81,11 +90,11 @@ function readSessionToken(req: Request, url: URL): string | null {
   return null;
 }
 
-export async function createSession(userId: string): Promise<string> {
+export async function createSession(userId: string, method: SessionMethod = "password"): Promise<string> {
   const token = newToken();
   await q(
-    `INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1, $2, now() + make_interval(days => $3))`,
-    [sha256(token), userId, SESSION_DAYS],
+    `INSERT INTO sessions (token_hash, user_id, method, expires_at) VALUES ($1, $2, $3, now() + make_interval(days => $4))`,
+    [sha256(token), userId, method, SESSION_DAYS],
   );
   return token;
 }
@@ -95,26 +104,35 @@ export async function destroySession(req: Request, url: URL): Promise<void> {
   if (token) await q(`DELETE FROM sessions WHERE token_hash = $1`, [sha256(token)]);
 }
 
-/** Ingelogde gebruiker bij dit request. `renew` = cookie en sessie verlengen (schuivende sessie). */
-export async function userFromRequest(req: Request, url: URL): Promise<{ user: User; renew: string | null } | null> {
+/**
+ * Ingelogde gebruiker bij dit request. `renew` = cookie en sessie verlengen (schuivende sessie).
+ * orgLocked = de gekozen organisatie eist een passkey en deze sessie heeft die niet.
+ */
+export async function userFromRequest(
+  req: Request,
+  url: URL,
+  orgId: string | null,
+): Promise<{ user: User; renew: string | null; orgLocked: boolean } | null> {
   const token = readSessionToken(req, url);
   if (!token) return null;
   const hash = sha256(token);
-  const row = await q1<User & { stale: boolean }>(
-    `SELECT u.id, u.email, u.name, u.is_admin, s.last_seen_at < now() - interval '12 hours' AS stale
+  const row = await q1<User & { stale: boolean; orgRequiresPasskey: boolean | null }>(
+    `SELECT u.id, u.email, u.name, u.is_admin, (s.method = 'passkey') AS strong,
+            s.last_seen_at < now() - interval '12 hours' AS stale,
+            (SELECT require_passkey FROM organisations WHERE id = $2::uuid) AS org_requires_passkey
        FROM sessions s JOIN users u ON u.id = s.user_id
       WHERE s.token_hash = $1 AND s.expires_at > now() AND u.active`,
-    [hash],
+    [hash, orgId],
   );
   if (!row) return null;
-  const { stale, ...user } = row;
+  const { stale, orgRequiresPasskey, ...user } = row;
   if (stale) {
     await q(
       `UPDATE sessions SET last_seen_at = now(), expires_at = now() + make_interval(days => $2) WHERE token_hash = $1`,
       [hash, SESSION_DAYS],
     );
   }
-  return { user, renew: stale ? token : null };
+  return { user, renew: stale ? token : null, orgLocked: !!orgRequiresPasskey && !user.strong };
 }
 
 // ---------- eenmalige links (uitnodiging / wachtwoord-reset) ----------

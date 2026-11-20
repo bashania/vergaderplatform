@@ -15,7 +15,7 @@ import { route } from "../router";
 /** Organisaties waar de gebruiker bij mag: als beheerder, of via deelname aan een overleg. */
 function myOrganisations(userId: string) {
   return q(
-    `SELECT org.id, org.name, CASE WHEN adm.is_admin THEN 'beheerder' ELSE 'lid' END AS role
+    `SELECT org.id, org.name, org.require_passkey, CASE WHEN adm.is_admin THEN 'beheerder' ELSE 'lid' END AS role
        FROM organisations org
        CROSS JOIN LATERAL (
          SELECT EXISTS (SELECT 1 FROM organisation_admins a WHERE a.organisation_id = org.id AND a.user_id = $1) AS is_admin
@@ -32,12 +32,22 @@ function myOrganisations(userId: string) {
 route.get(
   "/api/session",
   async (c) => {
-    const [org, anyUser, organisations] = await Promise.all([
+    const [org, anyUser, organisations, account] = await Promise.all([
       q1<{ value: string }>(`SELECT value FROM settings WHERE key = 'orgName'`),
       c.user ? null : q1(`SELECT 1 AS x FROM users LIMIT 1`),
       c.user ? myOrganisations(c.user.id) : [],
+      c.user
+        ? q1<{ hasPassword: boolean; passkeys: number }>(
+            `SELECT (password_hash IS NOT NULL) AS has_password,
+                    (SELECT count(*)::int FROM passkeys WHERE user_id = users.id) AS passkeys
+               FROM users WHERE id = $1`,
+            [c.user.id],
+          )
+        : null,
     ]);
-    return { user: c.user ?? null, orgName: org?.value ?? "", setupNeeded: !c.user && !anyUser, organisations };
+    // strong = deze sessie is met een passkey ingelogd; alleen die opent organisaties met passkey-eis.
+    const user = c.user ? { ...c.user, hasPassword: account?.hasPassword ?? false, passkeys: account?.passkeys ?? 0 } : null;
+    return { user, orgName: org?.value ?? "", setupNeeded: !c.user && !anyUser, organisations };
   },
   { public: true },
 );
@@ -129,8 +139,8 @@ const EXPIRED = "Deze link is verlopen of al gebruikt. Vraag de beheerder om een
 route.get(
   "/api/tokens/:token",
   async (c) => {
-    const t = await q1<{ purpose: string; name: string; email: string }>(
-      `SELECT t.purpose, u.name, u.email
+    const t = await q1<{ purpose: string; name: string; email: string; canUsePasskey: boolean }>(
+      `SELECT t.purpose, u.name, u.email, NOT EXISTS (SELECT 1 FROM passkeys WHERE user_id = u.id) AS can_use_passkey
          FROM user_tokens t JOIN users u ON u.id = t.user_id
         WHERE t.token_hash = $1 AND t.used_at IS NULL AND t.expires_at > now() AND u.active`,
       [sha256(c.params.token)],
@@ -171,11 +181,17 @@ route.post("/api/account/password", async (c) => {
   const current = typeof b.current === "string" ? b.current : "";
   const next = checkNewPassword(b.password);
   const row = await q1<{ passwordHash: string | null }>(`SELECT password_hash FROM users WHERE id = $1`, [c.user.id]);
-  if (!(await verifyPassword(current, row?.passwordHash ?? null))) throw bad("Je huidige wachtwoord klopt niet.");
+  if (!row?.passwordHash) {
+    // Account zonder wachtwoord (alleen passkey): instellen mag vanuit een passkey-sessie.
+    if (!c.user.strong) throw bad("Log in met je passkey om een wachtwoord in te stellen.");
+  } else if (!(await verifyPassword(current, row.passwordHash))) {
+    throw bad("Je huidige wachtwoord klopt niet.");
+  }
   await q(`UPDATE users SET password_hash = $2 WHERE id = $1`, [c.user.id, await hashPassword(next)]);
   // Alle andere apparaten uitloggen; dit apparaat krijgt een nieuwe sessie.
   await q(`DELETE FROM sessions WHERE user_id = $1`, [c.user.id]);
-  c.setSession(await createSession(c.user.id));
+  // De nieuwe sessie houdt dezelfde zekerheid: een passkey-sessie blijft een passkey-sessie.
+  c.setSession(await createSession(c.user.id, c.user.strong ? "passkey" : "password"));
   return { ok: true };
 });
 

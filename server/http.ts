@@ -1,8 +1,11 @@
 export class HttpError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  /** Extra velden in het antwoord, bijvoorbeeld een code waar de frontend op reageert. */
+  extra?: Record<string, unknown>;
+  constructor(status: number, message: string, extra?: Record<string, unknown>) {
     super(message);
     this.status = status;
+    this.extra = extra;
   }
 }
 
@@ -16,6 +19,10 @@ export function json(data: unknown, status = 200): Response {
 export const bad = (message: string) => new HttpError(400, message);
 export const forbidden = (message = "Je hebt hier geen rechten voor.") => new HttpError(403, message);
 export const notFound = (message = "Niet gevonden.") => new HttpError(404, message);
+
+/** De organisatie eist tweestapsverificatie en deze sessie is niet met een passkey ingelogd. */
+export const passkeyRequired = (organisationId: string) =>
+  new HttpError(403, "Deze organisatie vereist inloggen met een passkey.", { code: "passkey_required", organisationId });
 
 export function env(key: string): string | undefined {
   const g = globalThis as { Netlify?: { env: { get(k: string): string | undefined } } };

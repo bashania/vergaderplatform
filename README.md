@@ -11,6 +11,8 @@ Agenda's, stukken, besluiten en acties op één plek, zodat alle deelnemers alti
 - **Besluiten**: automatisch doorlopend genummerd per overleg per jaar (2026-001, 2026-002, ...).
 - **Acties**: actiehouder en deadline; de actiehouder meldt zelf af. Open acties komen terug op de actielijst van de volgende vergadering.
 - **Uitnodigen**: deelnemers toevoegen op e-mailadres. Bestaat het account al, dan wordt het gekoppeld; anders ontstaat een uitnodigingslink. Er is bewust geen lijst van alle accounts.
+- **Passkeys**: inloggen met vingerafdruk, gezicht of de pincode van het apparaat, zonder wachtwoord. Bij een uitnodiging is een passkey de eerste keuze; een wachtwoord blijft mogelijk.
+- **Tweestapsverificatie per organisatie**: een beheerder kan een passkey verplicht stellen. Wie met alleen een wachtwoord is ingelogd, komt die organisatie dan niet in.
 - **Status**: concept (alleen secretaris) → gepubliceerd (deelnemers zien alles) → afgerond (vergrendeld).
 
 ## Rollen
@@ -33,6 +35,14 @@ Agenda's, stukken, besluiten en acties op één plek, zodat alle deelnemers alti
 | Login | Eigen accounts: scrypt-wachtwoorden, sessiecookie, eenmalige uitnodigings- en resetlinks |
 
 De gekozen organisatie gaat mee in de header `x-organisation` en bepaalt wat de overzichten tonen. Toegang tot een overleg, vergadering of stuk wordt altijd op het object zelf gecontroleerd (`server/access.ts`), nooit op basis van die header.
+
+### Passkeys en tweestapsverificatie
+
+- Een passkey is twee factoren in één: het apparaat (bezit) plus vingerafdruk, gezicht of pincode. Elke sessie onthoudt of ze met een passkey of met een wachtwoord is ingelogd (`sessions.method`).
+- Stelt een organisatie een passkey verplicht, dan weigeren alle toegangspaden (`server/access.ts`) een wachtwoordsessie met de code `passkey_required`. De frontend toont dan hoe je met een passkey binnenkomt.
+- De eerste passkey kan vanuit een wachtwoordsessie worden aangemaakt. Een extra passkey toevoegen, een passkey verwijderen, het wachtwoord verwijderen en de eis in- of uitschakelen kan alleen vanuit een passkey-sessie. Zo kan iemand met alleen een buitgemaakt wachtwoord een beveiligd account niet overnemen.
+- Apparaat kwijt: de platformbeheerder wist de passkeys van het account en stuurt een resetlink.
+- Een passkey is gebonden aan het webadres waarop hij is aangemaakt. Verhuist het platform naar een eigen domein, zet dan eerst `RP_ID` en laat mensen pas daarna passkeys aanmaken: passkeys van het oude adres werken op het nieuwe niet.
 
 Het platform verstuurt zelf geen e-mail. Uitnodigingslinks kopieert of mailt de secretaris of beheerder zelf; resetlinks (wachtwoord vergeten) maakt alleen de platformbeheerder.
 
@@ -66,6 +76,8 @@ Met de lokale server aan en een lege database:
 npm run test:e2e
 ```
 
+De test doorloopt ook de passkeys, met een software-authenticator (`scripts/soft-authenticator.mjs`) die doet wat een telefoon of laptop doet.
+
 De herkenning van geplakte agenda's:
 
 ```bash
@@ -77,6 +89,7 @@ npm run test:parse
 | Variabele | Betekenis |
 |---|---|
 | `SETUP_CODE` | Eenmalige code waarmee de eerste platformbeheerder zijn account aanmaakt. Daarna zonder functie; verwijder de variabele na de inrichting. |
+| `RP_ID` | Domein waaraan passkeys worden gebonden. Standaard de hostnaam van de site. Alleen zetten bij een eigen domein, en vóórdat er passkeys zijn aangemaakt. |
 | `BLOB_REGION` | Regio van de stukken (standaard `eu-central-1`). Niet wijzigen na ingebruikname: bestaande stukken verhuizen niet mee. |
 
 ## Schemawijzigingen

@@ -2,7 +2,9 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, errorText } from "../api";
 import { useAuth } from "../auth";
-import { Brand, Field, Form } from "../ui";
+import { PasskeyButton } from "../components/PasskeyButton";
+import { acceptInviteWithPasskey, deviceName, loginWithPasskey, passkeysSupported } from "../passkeys";
+import { Brand, Button, Field, Form } from "../ui";
 
 function AuthShell({ title, lead, children }: { title: string; lead?: ReactNode; children: ReactNode }) {
   const { orgName } = useAuth();
@@ -60,6 +62,14 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   return (
     <AuthShell title="Inloggen" lead="Agenda's, stukken, besluiten en acties op één plek.">
+      {passkeysSupported() && (
+        <>
+          <PasskeyButton run={loginWithPasskey} onDone={refresh}>
+            Inloggen met passkey
+          </PasskeyButton>
+          <div className="divider">of met je wachtwoord</div>
+        </>
+      )}
       <Form
         submitLabel="Inloggen"
         onSubmit={async () => {
@@ -73,7 +83,6 @@ export function LoginPage() {
             type="email"
             autoComplete="username"
             required
-            autoFocus
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
@@ -89,7 +98,7 @@ export function LoginPage() {
           />
         </Field>
       </Form>
-      <p className="small muted">Wachtwoord vergeten of nog geen account? Vraag de beheerder om een nieuwe link.</p>
+      <p className="small muted">Wachtwoord vergeten, apparaat kwijt of nog geen account? Vraag de beheerder om een nieuwe link.</p>
     </AuthShell>
   );
 }
@@ -143,19 +152,26 @@ export function WelcomePage() {
   const { refresh } = useAuth();
   const navigate = useNavigate();
   const token = window.location.hash.slice(1);
-  const [info, setInfo] = useState<{ purpose: "invite" | "reset"; name: string; email: string } | null>(null);
+  type Info = { purpose: "invite" | "reset"; name: string; email: string; canUsePasskey: boolean };
+  const [info, setInfo] = useState<Info | null>(null);
   const [error, setError] = useState("");
   const [pw, setPw] = useState<[string, string]>(["", ""]);
+  const [withPassword, setWithPassword] = useState(false);
 
   useEffect(() => {
     if (!token) {
       setError("Deze link is onvolledig. Kopieer de hele link uit het bericht.");
       return;
     }
-    api<{ purpose: "invite" | "reset"; name: string; email: string }>(`/api/tokens/${encodeURIComponent(token)}`)
+    api<Info>(`/api/tokens/${encodeURIComponent(token)}`)
       .then(setInfo)
       .catch((e) => setError(errorText(e)));
   }, [token]);
+
+  const done = async () => {
+    await refresh();
+    navigate("/", { replace: true });
+  };
 
   if (error) {
     return (
@@ -170,32 +186,51 @@ export function WelcomePage() {
   if (!info) return <div className="splash">Laden…</div>;
 
   const invite = info.purpose === "invite";
+  // Een passkey is de makkelijkste en veiligste keuze; een wachtwoord blijft mogelijk.
+  const offerPasskey = info.canUsePasskey && passkeysSupported();
+  const passkeyFirst = offerPasskey && !withPassword;
   return (
     <AuthShell
-      title={invite ? `Welkom, ${info.name}` : "Nieuw wachtwoord"}
+      title={invite ? `Welkom, ${info.name}` : "Opnieuw toegang"}
       lead={
-        invite ? (
-          <>
-            Kies een wachtwoord voor <strong>{info.email}</strong>. Daarna kun je direct bij de agenda's en stukken.
-          </>
-        ) : (
-          <>
-            Kies een nieuw wachtwoord voor <strong>{info.email}</strong>.
-          </>
-        )
+        <>
+          {invite ? "Activeer je account voor " : "Kies hoe je voortaan inlogt met "}
+          <strong>{info.email}</strong>.{invite ? " Daarna kun je direct bij de agenda's en stukken." : ""}
+        </>
       }
     >
-      <Form
-        submitLabel={invite ? "Account activeren" : "Wachtwoord opslaan"}
-        onSubmit={async () => {
-          checkSame(pw);
-          await api(`/api/tokens/${encodeURIComponent(token)}`, { method: "POST", body: { password: pw[0] } });
-          await refresh();
-          navigate("/", { replace: true });
-        }}
-      >
-        <PasswordFields value={pw} onChange={setPw} />
-      </Form>
+      {passkeyFirst ? (
+        <>
+          <PasskeyButton run={() => acceptInviteWithPasskey(token, deviceName())} onDone={done}>
+            Passkey aanmaken
+          </PasskeyButton>
+          <p className="small muted">
+            Met een passkey log je in met je vingerafdruk, gezicht of de pincode van dit apparaat. Je hoeft geen wachtwoord te onthouden en het kan niet
+            worden afgekeken of gelekt.
+          </p>
+          <Button variant="ghost" onClick={() => setWithPassword(true)}>
+            Liever een wachtwoord kiezen
+          </Button>
+        </>
+      ) : (
+        <>
+          <Form
+            submitLabel={invite ? "Account activeren" : "Wachtwoord opslaan"}
+            onSubmit={async () => {
+              checkSame(pw);
+              await api(`/api/tokens/${encodeURIComponent(token)}`, { method: "POST", body: { password: pw[0] } });
+              await done();
+            }}
+          >
+            <PasswordFields value={pw} onChange={setPw} />
+          </Form>
+          {offerPasskey && (
+            <Button variant="ghost" onClick={() => setWithPassword(false)}>
+              Toch een passkey gebruiken
+            </Button>
+          )}
+        </>
+      )}
     </AuthShell>
   );
 }

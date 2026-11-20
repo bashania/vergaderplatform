@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { api } from "../api";
-import { useAuth } from "../auth";
+import { useAuth, useUser } from "../auth";
 import { LinkModal, type LinkInfo } from "../components/LinkModal";
 import type { Role } from "../lib";
 import { Button, Empty, Field, Form, Loader, useLoad, useRun, useToast } from "../ui";
@@ -11,8 +11,9 @@ type Person = {
   name: string;
   email: string;
   active: boolean;
-  hasPassword: boolean;
+  activated: boolean;
   isAdmin: boolean;
+  hasPasskey: boolean;
   overleggen: { id: string; name: string; role: Role }[];
 };
 
@@ -21,6 +22,7 @@ type Added = { name: string; email: string; created: boolean } & Partial<LinkInf
 /** Beheer van één organisatie: wie mag erin, en wie beheert haar. Alleen voor beheerders van die organisatie. */
 export default function OrganisatiePage() {
   const { org, refresh } = useAuth();
+  const user = useUser();
   const run = useRun();
   const toast = useToast();
   const base = `/api/organisations/${org?.id}`;
@@ -63,7 +65,7 @@ export default function OrganisatiePage() {
                   <strong>{p.name}</strong>
                   <div className="meta">
                     <span>{p.email}</span>
-                    {!p.hasPassword && <span className="badge warm">Uitnodiging nog niet geaccepteerd</span>}
+                    {!p.activated && <span className="badge warm">Uitnodiging nog niet geaccepteerd</span>}
                   </div>
                 </div>
                 <Button
@@ -134,7 +136,8 @@ export default function OrganisatiePage() {
                         <div className="small muted">{p.email}</div>
                         <div className="row" style={{ gap: 4, marginTop: 4 }}>
                           {p.isAdmin && <span className="badge accent">Beheerder</span>}
-                          {!p.hasPassword && <span className="badge warm">Nog niet geactiveerd</span>}
+                          {!p.activated && <span className="badge warm">Nog niet geactiveerd</span>}
+                          {p.activated && (p.hasPasskey ? <span className="badge accent">Passkey</span> : <span className="badge">Geen passkey</span>)}
                           {!p.active && <span className="badge">Geblokkeerd</span>}
                         </div>
                       </td>
@@ -150,7 +153,7 @@ export default function OrganisatiePage() {
                       </td>
                       <td>
                         <div className="row" style={{ gap: 2, justifyContent: "flex-end" }}>
-                          {!p.hasPassword && p.active && (
+                          {!p.activated && p.active && (
                             <Button small variant="ghost" icon="mail" onClick={() => invite(p)}>
                               Uitnodigingslink
                             </Button>
@@ -182,6 +185,44 @@ export default function OrganisatiePage() {
             <p className="small muted">
               Deelnemers voeg je toe bij het overleg zelf, op het tabblad Deelnemers. Wachtwoord vergeten? Dat regelt de platformbeheerder met een resetlink.
             </p>
+          </div>
+        </section>
+
+        <section className="card">
+          <div className="card-head">
+            <h2 className="section-title">Tweestapsverificatie</h2>
+            {org.requirePasskey ? <span className="badge accent">Passkey verplicht</span> : <span className="badge">Niet verplicht</span>}
+          </div>
+          <div className="card-body stack">
+            <p>
+              Stel je een passkey verplicht, dan komt alleen wie met een passkey is ingelogd nog bij <strong>{org.name}</strong>. Een wachtwoord alleen is dan niet
+              genoeg. Geschikt voor overleggen met vertrouwelijke stukken, zoals cijfers of personeelszaken.
+            </p>
+            <p className="small muted">
+              {people.filter((p) => p.hasPasskey).length} van de {people.length} personen hebben al een passkey. Wie er nog geen heeft, krijgt bij het openen van
+              deze organisatie de vraag er een aan te maken.
+            </p>
+            {user.strong ? (
+              <div>
+                <Button
+                  variant={org.requirePasskey ? "secondary" : "primary"}
+                  icon="lock"
+                  onClick={async () => {
+                    const next = !org.requirePasskey;
+                    if (next && !window.confirm(`Passkey verplicht stellen voor ${org.name}? Deelnemers zonder passkey moeten er eerst een aanmaken.`)) return;
+                    if (await run(() => api(base, { method: "PATCH", body: { requirePasskey: next } }), next ? "Passkey is nu verplicht" : "Passkey is niet meer verplicht")) {
+                      await refresh();
+                    }
+                  }}
+                >
+                  {org.requirePasskey ? "Passkey niet meer verplichten" : "Passkey verplicht stellen"}
+                </Button>
+              </div>
+            ) : (
+              <div className="notice">
+                Log zelf eerst in met een passkey om dit te wijzigen. Zo sluit je jezelf niet buiten. Een passkey maak je aan onder <Link to="/account">Mijn account</Link>.
+              </div>
+            )}
           </div>
         </section>
 
