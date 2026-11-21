@@ -28,6 +28,18 @@ export default function UitlegPage() {
 
       <section className="card">
         <div className="card-head">
+          <h2 className="section-title">In twee minuten</h2>
+          <span className="muted small">Film met ondertitels, zonder geluid</span>
+        </div>
+        <div className="card-body">
+          <video className="help-film" controls preload="none" playsInline poster="/instructiefilm.jpg" aria-label="Instructiefilm: van agenda tot afgeronde actie">
+            <source src="/instructiefilm.mp4" type="video/mp4" />
+          </video>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="card-head">
           <h2 className="section-title">Voor iedereen die vergadert</h2>
         </div>
         <div className="card-body stack">

@@ -60,7 +60,9 @@ export function fakeNotes(items: { key: string; title: string }[], transcript: s
 /** Vraag het archief: het eerste besluit of de eerste notitie waarin een trefwoord uit de vraag voorkomt. */
 export function fakeAnswer(sources: { key: string; text: string }[], words: string[]): string {
   const hit = sources.find((s) => words.some((w) => s.text.toLowerCase().includes(w)));
-  return JSON.stringify(hit ? { answer: `Gevonden in het archief: ${hit.text}`, sources: [hit.key, "ONBEKEND"] } : { answer: "Daarover is niets vastgelegd.", sources: [] });
+  // Voor de instructiefilm kan het antwoord vooraf zijn ingesteld (zoals AI_FAKE_SUMMARY).
+  const answer = env("AI_FAKE_ANSWER")?.replace(/\\n/g, "\n") ?? `Gevonden in het archief: ${hit?.text}`;
+  return JSON.stringify(hit ? { answer, sources: [hit.key, "ONBEKEND"] } : { answer: "Daarover is niets vastgelegd.", sources: [] });
 }
 
 export function fakeSummary(name: string): string {

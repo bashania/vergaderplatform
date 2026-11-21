@@ -205,10 +205,10 @@ De film wordt opgenomen door een script dat met fictieve gegevens door de scherm
 
 1. Start de lokale server met een lege database en `scripts/film/demo.env` als `.env`, en draai de migraties.
 2. `node scripts/film/seed-demo.cjs > demo.json` vult de demogegevens.
-3. `REC=1 node scripts/film/film.cjs uit "$(cat demo.json)"` neemt de beelden op (zonder `REC=1`: alleen schermafbeeldingen, als snelle controle).
-4. `node scripts/film/montage.cjs uit instructiefilm.mp4` maakt de film met ondertitels.
+3. `REC=1 node scripts/film/film.cjs uit "$(cat demo.json)"` neemt de beelden op (zonder `REC=1`: alleen schermafbeeldingen, als snelle controle). Het script start zelf een nagebouwde mailserver op poort 2525 voor de scène waarin de agenda wordt gemaild. Elke opname begint met verse demogegevens: stap 1 en 2 opnieuw.
+4. `node scripts/film/montage.cjs uit public/instructiefilm.mp4` maakt de film met ondertitels; `ffmpeg -ss 53 -i public/instructiefilm.mp4 -frames:v 1 -vf scale=1280:-1 -q:v 4 public/instructiefilm.jpg` maakt het stilstaande beeld.
 
-De samenvatting en de voorstellen in de film komen uit de lokale testmodus, niet uit het taalmodel.
+De film staat op de pagina Uitleg (`public/instructiefilm.mp4`) en wordt pas opgehaald als iemand op afspelen klikt. De samenvatting, de voorstellen en het antwoord uit het archief in de film komen uit de lokale testmodus, niet uit het taalmodel.
 
 ## Instellingen (Netlify-omgevingsvariabelen)
 
