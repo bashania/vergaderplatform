@@ -62,3 +62,43 @@ export async function restoreBackup(file: File, code: string, onProgress: (done:
   }
   return send({ step: "finish" });
 }
+
+/**
+ * Controleert een back-upbestand tegen het draaiende platform zonder iets te wijzigen: elke regel wordt
+ * gelezen zoals terugzetten dat zou doen, en geteld hoeveel er nu (nog) in de database staan.
+ */
+export async function verifyBackup(file: File, onProgress: (done: number, total: number) => void): Promise<{ rows: number; readable: number; present: number; exportedAt: string }> {
+  let backup: Backup;
+  try {
+    backup = JSON.parse(await file.text()) as Backup;
+  } catch {
+    throw new Error("Dit bestand is niet leesbaar. Kies het back-upbestand dat je hier hebt gedownload.");
+  }
+  if (!backup || backup.format !== "vergaderplatform-backup" || typeof backup.tables !== "object") throw new Error("Dit bestand is geen back-up van het vergaderplatform.");
+  const total = Object.values(backup.tables).reduce((n, r) => n + r.length, 0);
+  let done = 0;
+  let readable = 0;
+  let present = 0;
+  for (const [name, rows] of Object.entries(backup.tables)) {
+    let batch: Row[] = [];
+    let size = 0;
+    const flush = async () => {
+      if (!batch.length) return;
+      const r = await api<{ readable: number; present: number }>("/api/admin/backup/verify", { method: "POST", body: { table: name, rows: batch } });
+      readable += r.readable;
+      present += r.present;
+      done += batch.length;
+      onProgress(done, total);
+      batch = [];
+      size = 0;
+    };
+    for (const row of rows) {
+      const bytes = JSON.stringify(row).length;
+      if (batch.length && (size + bytes > 1_500_000 || batch.length >= 400)) await flush();
+      batch.push(row);
+      size += bytes;
+    }
+    await flush();
+  }
+  return { rows: total, readable, present, exportedAt: backup.exportedAt };
+}
