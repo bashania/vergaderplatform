@@ -208,6 +208,15 @@ function overlay() {
   await shot("samenvatting");
   await click(page.locator("dialog[open]").getByRole("button", { name: "Sluiten", exact: true }).last());
 
+  // Voorbereiden met een eigen aantekening
+  await caption("Bereid je voor met een eigen aantekening bij een agendapunt. Alleen jij ziet die.");
+  const groen = page.locator(".agenda-item", { hasText: "Groenplan binnentuin" });
+  await click(groen.getByRole("button", { name: "Eigen aantekening" }));
+  await page.keyboard.type("Vragen: wie doet het onderhoud in de zomer? Is de subsidie al toegezegd?", { delay: FAST ? 0 : 30 });
+  await groen.getByText("Opgeslagen · alleen jij ziet dit").waitFor();
+  await wait(2600);
+  await shot("eigen-aantekening");
+
   // De agenda mailen, en aanmelden vanuit de e-mail
   await page.evaluate(() => document.querySelector(".main")?.scrollTo({ top: 0, behavior: "smooth" }) ?? window.scrollTo({ top: 0, behavior: "smooth" }));
   await caption("Verstuur de agenda naar alle deelnemers. De afspraak voor hun eigen agenda zit erbij.");

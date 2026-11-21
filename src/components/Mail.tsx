@@ -8,6 +8,24 @@ type Settings = { host: string; port: number; security: "starttls" | "ssl" | "ge
 type LogRow = { at: string; kind: string; toEmail: string; subject: string; status: "bezig" | "verzonden" | "mislukt"; error: string };
 
 /** Platformbeheer: de mailserver waarmee het platform uitnodigingen, agenda's, verslagen en herinneringen verstuurt. */
+/**
+ * Veelgebruikte aanbieders: kiezen vult de server, de poort en de beveiliging in en zegt welke gegevens
+ * waar horen. De adressen komen uit de documentatie van de aanbieders (nagekeken in november 2026).
+ */
+const PROVIDERS = [
+  { key: "brevo", name: "Brevo (Europese verzenddienst)", host: "smtp-relay.brevo.com", user: "Het SMTP-login dat Brevo toont onder SMTP en API.", pass: "De SMTP-sleutel, niet de API-sleutel.", warn: "" },
+  { key: "mailjet", name: "Mailjet (Europese verzenddienst)", host: "in-v3.mailjet.com", user: "De API-sleutel van Mailjet.", pass: "De geheime sleutel van Mailjet.", warn: "" },
+  { key: "scaleway", name: "Scaleway Transactional Email (Europees)", host: "smtp.tem.scaleway.com", user: "Staat in de console van Scaleway bij Transactional Email.", pass: "De geheime sleutel uit dezelfde console.", warn: "" },
+  {
+    key: "m365",
+    name: "Microsoft 365",
+    host: "smtp.office365.com",
+    user: "Het e-mailadres van het postvak waarmee je verstuurt.",
+    pass: "Het wachtwoord of app-wachtwoord van dat postvak.",
+    warn: "Microsoft zet aanmelden met gebruikersnaam en wachtwoord eind december 2026 standaard uit. Daarna verstuurt het platform niets meer, tenzij je beheerder het opnieuw aanzet. Kies liever een verzenddienst.",
+  },
+] as const;
+
 export function MailSettingsCard() {
   const user = useUser();
   const run = useRun();
@@ -24,6 +42,8 @@ export function MailSettingsCard() {
 
   const set = (change: Partial<typeof form>) => setForm((f) => ({ ...f, ...change }));
   const active = !!data?.settings;
+  // De aanbieder volgt uit de ingevulde server: zo klopt de toelichting ook na opslaan en herladen.
+  const provider = PROVIDERS.find((p) => p.host === form.host.trim().toLowerCase());
 
   return (
     <section className="card">
@@ -42,9 +62,8 @@ export function MailSettingsCard() {
                 blijft alles werken zoals nu: links kopieer je en deelnemers mail je uit je eigen programma.
               </p>
               <p className="small muted">
-                Vul de SMTP-gegevens in van een verzenddienst (bijvoorbeeld Brevo, Mailjet of Postmark) of van je hostingpartij. Bij Microsoft 365 werkt
-                aanmelden met alleen een wachtwoord meestal niet meer. Het afzenderadres moet bij die dienst zijn toegestaan, anders belandt de mail in de
-                spam. Het wachtwoord wordt versleuteld opgeslagen.
+                Kies een aanbieder of vul de gegevens van je eigen mailserver in. Het afzenderadres moet van een domein zijn dat je bij de aanbieder hebt
+                bevestigd (SPF en DKIM), anders belandt de mail in de spam. Het wachtwoord wordt versleuteld opgeslagen.
               </p>
               <Form
                 submitLabel="Opslaan"
@@ -56,6 +75,29 @@ export function MailSettingsCard() {
                   toast("Mailinstellingen opgeslagen");
                 }}
               >
+                <Field label="Aanbieder">
+                  <select
+                    className="input"
+                    value={provider?.key ?? ""}
+                    onChange={(e) => {
+                      const chosen = PROVIDERS.find((p) => p.key === e.target.value);
+                      if (chosen) set({ host: chosen.host, port: 587, security: "starttls" });
+                      else set({ host: "" });
+                    }}
+                  >
+                    <option value="">Andere of eigen mailserver</option>
+                    {PROVIDERS.map((p) => (
+                      <option key={p.key} value={p.key}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                {provider?.warn && (
+                  <div className="notice warm small" role="note">
+                    {provider.warn}
+                  </div>
+                )}
                 <div className="form-row">
                   <Field label="Mailserver (SMTP)">
                     <input className="input" required maxLength={200} placeholder="smtp.voorbeeld.nl" value={form.host} onChange={(e) => set({ host: e.target.value })} />
@@ -76,10 +118,10 @@ export function MailSettingsCard() {
                   </Field>
                 </div>
                 <div className="form-row">
-                  <Field label="Gebruikersnaam">
+                  <Field label="Gebruikersnaam" hint={provider?.user}>
                     <input className="input" maxLength={200} autoComplete="off" value={form.user} onChange={(e) => set({ user: e.target.value })} />
                   </Field>
-                  <Field label="Wachtwoord" hint={data?.settings?.hasPassword ? "Laat leeg om het opgeslagen wachtwoord te houden." : undefined}>
+                  <Field label="Wachtwoord" hint={[provider?.pass, data?.settings?.hasPassword ? "Laat leeg om het opgeslagen wachtwoord te houden." : ""].filter(Boolean).join(" ") || undefined}>
                     <input className="input" type="password" maxLength={500} autoComplete="new-password" value={form.pass} onChange={(e) => set({ pass: e.target.value })} />
                   </Field>
                 </div>
