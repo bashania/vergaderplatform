@@ -1,8 +1,9 @@
 import { useState } from "react";
+import { downloadCsv } from "../api";
 import { useUser } from "../auth";
 import { ActionList } from "../components/Records";
 import { isOverdue, type Action, type Overleg } from "../lib";
-import { Loader, useLoad } from "../ui";
+import { Button, Loader, useLoad } from "../ui";
 
 export default function ActiesPage() {
   const user = useUser();
@@ -54,7 +55,25 @@ export default function ActiesPage() {
           <h2 className="section-title">
             {actions.length} {actions.length === 1 ? "actie" : "acties"}
           </h2>
-          {late > 0 && <span className="badge warm">{late} te laat</span>}
+          <div className="row">
+            {late > 0 && <span className="badge warm">{late} te laat</span>}
+            {actions.length > 0 && (
+              <Button
+                small
+                variant="ghost"
+                icon="download"
+                className="no-print"
+                onClick={() =>
+                  downloadCsv("actielijst.csv", [
+                    ["Actie", "Actiehouder", "Deadline", "Status", "Overleg", "Vergadering"],
+                    ...actions.map((a) => [a.text, a.ownerName, a.dueDate, a.status, a.overlegName, a.meetingTitle]),
+                  ])
+                }
+              >
+                Excel
+              </Button>
+            )}
+          </div>
         </div>
         <Loader loading={loading} error={error}>
           <ActionList

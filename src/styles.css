@@ -1372,6 +1372,48 @@ dialog.modal::backdrop {
   flex-wrap: wrap;
 }
 
+/* ---------- aan de slag en uitleg ---------- */
+.step-mark {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--border);
+  border-radius: 50%;
+}
+.step-mark.done {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+.help-topic {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+}
+.help-topic:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.help-topic summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--ink);
+}
+.help-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0 2px 18px;
+}
+.help-body ol {
+  margin: 0;
+  padding-left: 20px;
+}
+.help-body li {
+  margin: 4px 0;
+}
+
 /* ---------- inzicht ---------- */
 .stats {
   display: grid;

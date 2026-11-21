@@ -23,6 +23,7 @@ Agenda's, stukken, besluiten en acties op één plek, zodat alle deelnemers alti
 - **Sneller plannen**: standaardagenda's (MT-overleg, werkoverleg, projectoverleg, bestuursvergadering) en de volgende vergadering in één klik, in hetzelfde ritme als de vorige.
 - **Inzicht** (beheerder): vergadertijd en persoonsuren, uitloop, besluiten, acties op tijd en openstaande acties per persoon, per overleg en in totaal; met een uurtarief ook een schatting van wat vergaderen kost.
 - **Vraag het archief**: de AI-assistent beantwoordt vragen in gewone taal over eerdere besluiten, acties en notulen, met de bronnen erbij.
+- **In gebruik nemen**: een lijst "Aan de slag" op het overzicht van de beheerder (verdwijnt als alles is ingericht), een uitlegpagina per rol in het menu, en de actie- en besluitenlijst als bestand voor Excel.
 - **Transcript en Plaud**: de secretaris zet het transcript van de opname bij de vergadering, opgehaald uit Plaud of geplakt als tekst (ook uit Teams of Zoom). De AI-assistent maakt er concept-notulen per agendapunt van; de secretaris loopt ze na en neemt ze over.
 
 ## Rollen

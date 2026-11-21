@@ -1,10 +1,12 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { ACC, accParams, requireOrgAdmin, requireOrgId, VISIBLE } from "../access";
-import { ask, requireAi } from "../ai";
+import { aiAvailable, ask, requireAi } from "../ai";
 import { fakeAnswer } from "../ai-fake";
 import { q, q1 } from "../db";
 import { HttpError, int, str, uuid } from "../http";
+import { mailEnabled } from "../mail";
 import { route } from "../router";
+import { hasSecretKey } from "../secret";
 
 // ---------- inzicht voor de beheerder ----------
 
@@ -61,6 +63,29 @@ route.get("/api/organisations/:id/insights", async (c) => {
     ),
   ]);
   return { months, hourlyRate: org?.hourlyRate ?? null, overleggen, people };
+});
+
+// ---------- aan de slag ----------
+
+/** Wat er al is ingericht, voor de lijst "Aan de slag" op het overzicht van de beheerder. */
+route.get("/api/organisations/:id/start", async (c) => {
+  const id = uuid(c.params.id, "Organisatie");
+  await requireOrgAdmin(c.user, id);
+  const [row, mail] = await Promise.all([
+    q1<{ overleggen: number; firstOverlegId: string | null; members: number; published: number; calendar: boolean; aiEnabled: boolean }>(
+      `SELECT (SELECT count(*)::int FROM overleggen o WHERE o.organisation_id = $1 AND NOT o.archived) AS overleggen,
+              (SELECT o.id FROM overleggen o WHERE o.organisation_id = $1 AND NOT o.archived ORDER BY o.created_at LIMIT 1) AS first_overleg_id,
+              (SELECT count(DISTINCT m.user_id)::int FROM memberships m JOIN overleggen o ON o.id = m.overleg_id
+                WHERE o.organisation_id = $1 AND m.user_id <> $2) AS members,
+              (SELECT count(*)::int FROM meetings mt JOIN overleggen o ON o.id = mt.overleg_id
+                WHERE o.organisation_id = $1 AND mt.status <> 'concept') AS published,
+              (SELECT calendar_token_hash IS NOT NULL FROM users WHERE id = $2) AS calendar,
+              (SELECT ai_enabled FROM organisations WHERE id = $1) AS ai_enabled`,
+      [id, c.user.id],
+    ),
+    mailEnabled(),
+  ]);
+  return { ...row, aiAvailable: aiAvailable(), mailEnabled: mail, mailPossible: hasSecretKey() };
 });
 
 // ---------- vraag het archief ----------

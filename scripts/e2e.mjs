@@ -911,6 +911,14 @@ step("5e. Inzicht en vraag het archief");
   check("ongeldig uurtarief geweigerd", (await admin.patch(`/api/organisations/${org1}`, { hourlyRate: 0 })).status === 400);
   check("uurtarief weer leeg", (await admin.patch(`/api/organisations/${org1}`, { hourlyRate: null })).status === 200 && (await admin.get(iPath)).data.hourlyRate === null);
 
+  const start = await admin.get(`/api/organisations/${org1}/start`);
+  check(
+    "aan de slag: wat er al is ingericht",
+    start.status === 200 && start.data.overleggen >= 1 && start.data.firstOverlegId === overlegId && start.data.members >= 1 && start.data.published >= 1 && start.data.calendar === false && start.data.mailEnabled === false && start.data.mailPossible === true,
+    JSON.stringify(start.data),
+  );
+  check("aan de slag alleen voor beheerders", (await dee.client.get(`/api/organisations/${org1}/start`)).status === 403);
+
   const question = { question: "Wat is er besloten over de begroting van 2027?" };
   check("assistent uit: geen vragen aan het archief", (await dee.client.post("/api/ai/ask", question)).status === 403);
   await admin.patch(`/api/organisations/${org1}`, { aiEnabled: true });

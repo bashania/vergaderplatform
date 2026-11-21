@@ -149,7 +149,13 @@ route.post("/api/meetings/:id/mail", async (c) => {
 
     let sent = 0;
     const failed: string[] = [];
+    // Een trage mailserver mag het verzoek niet over de tijdslimiet duwen: wat dan nog niet weg is, melden we als niet verstuurd.
+    const deadline = Date.now() + 45_000;
     for (const to of members) {
+      if (Date.now() > deadline) {
+        failed.push(to.name);
+        continue;
+      }
       const ok = await m.send(
         kind === "agenda"
           ? {

@@ -106,6 +106,10 @@ export default function Layout() {
               Toegang en beheer
             </NavLink>
           )}
+          <NavLink to="/uitleg">
+            <Icon name="help" />
+            Uitleg
+          </NavLink>
           {user.isAdmin && (
             <>
               <div className="nav-label">Platform</div>
