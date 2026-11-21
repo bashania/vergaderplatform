@@ -84,6 +84,34 @@ route.post(
 /** Aangeroepen als de browser de back-up compleet heeft: zo staat in het logboek wie wanneer een back-up maakte. */
 route.post("/api/admin/backup/done", async () => ({ ok: true }), { admin: true });
 
+/**
+ * Proef: leest een deel van een back-upbestand precies zoals terugzetten dat doet (dezelfde omzetting
+ * naar de kolommen van de tabel), maar schrijft niets. Zo is vóór een verhuizing te controleren dat
+ * het bestand compleet is en door deze database wordt geaccepteerd.
+ */
+route.post(
+  "/api/admin/backup/verify",
+  async (c) => {
+    const b = await c.body();
+    const t = table(b.table);
+    if (!Array.isArray(b.rows) || b.rows.length > 1000) throw bad("Ongeldig deel van de back-up.");
+    if (!b.rows.length) return { readable: 0, present: 0 };
+    const key = t.order.replace("(parent_id IS NOT NULL), ", "").split(", ");
+    try {
+      return await q1<{ readable: number; present: number }>(
+        `WITH incoming AS (SELECT * FROM jsonb_populate_recordset(NULL::${t.name}, $1::jsonb))
+         SELECT (SELECT count(*)::int FROM incoming) AS readable,
+                (SELECT count(*)::int FROM incoming i WHERE EXISTS (SELECT 1 FROM ${t.name} x WHERE ${key.map((k) => `x.${k} = i.${k}`).join(" AND ")})) AS present`,
+        [JSON.stringify(b.rows)],
+      );
+    } catch (e) {
+      // De database kan een regel niet omzetten naar de kolommen van de tabel: het bestand is beschadigd of van een andere soort.
+      throw new HttpError(422, `De back-up is niet leesbaar bij ${t.name}: ${e instanceof Error ? e.message.slice(0, 200) : "onbekende fout"}`);
+    }
+  },
+  { admin: true, audit: false },
+);
+
 // ---------- terugzetten (leeg platform, met de installatiecode) ----------
 
 function checkCode(given: unknown) {

@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { api, errorText } from "../api";
-import { downloadBackup } from "../backup";
+import { type BackupCheck, downloadBackup, verifyBackup } from "../backup";
 import { fmtDateTime } from "../lib";
 import { Button, useRun, useToast } from "../ui";
 
@@ -9,6 +9,9 @@ export function BackupCard() {
   const toast = useToast();
   const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [checking, setChecking] = useState<string | null>(null);
+  const [checked, setChecked] = useState<BackupCheck | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
   return (
     <section className="card">
       <div className="card-head">
@@ -42,6 +45,45 @@ export function BackupCard() {
           Bewaar het bestand op een veilige plek: het bevat alles wat in het platform staat, waaronder transcripten en de (versleutelde) inloggegevens van
           accounts. De bestanden van stukken zitten er niet in; die blijven in de opslag van het platform staan.
         </p>
+        <div className="row">
+          <Button small variant="secondary" icon="check" busy={checking !== null} onClick={() => fileInput.current?.click()}>
+            {checking ?? "Een back-upbestand controleren"}
+          </Button>
+          <input
+            ref={fileInput}
+            type="file"
+            accept=".json,application/json"
+            hidden
+            aria-label="Back-upbestand om te controleren"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (!file) return;
+              setError("");
+              setChecked(null);
+              setChecking("Controleren…");
+              try {
+                setChecked(await verifyBackup(file, (done, total) => setChecking(`${done} van ${total}`)));
+              } catch (err) {
+                setError(errorText(err));
+              }
+              setChecking(null);
+            }}
+          />
+        </div>
+        {checked && (
+          <div className={`notice ${checked.readable === checked.rows && !checked.missing ? "accent" : "warm"}`}>
+            <strong>
+              {checked.readable === checked.rows ? "Dit bestand is compleet leesbaar." : `Niet alles is leesbaar: ${checked.readable} van ${checked.rows} regels.`}
+            </strong>{" "}
+            Back-up van {fmtDateTime(checked.exportedAt)} met {checked.rows.toLocaleString("nl-NL")} regels; {checked.present.toLocaleString("nl-NL")} daarvan staan nu
+            in het platform.{" "}
+            {checked.missing
+              ? `Let op: in het platform ${checked.missing === 1 ? "staat inmiddels 1 regel die" : `staan inmiddels ${checked.missing.toLocaleString("nl-NL")} regels die`} niet in dit bestand ${checked.missing === 1 ? "zit" : "zitten"}. Maak vlak voor een verhuizing een nieuwe back-up.`
+              : "Alles wat nu in het platform staat, zit in dit bestand (het logboek telt niet mee)."}{" "}
+            Er is niets gewijzigd.
+          </div>
+        )}
         {error && (
           <div className="form-error" role="alert">
             {error}
