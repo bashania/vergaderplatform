@@ -63,16 +63,32 @@ export function LiveTimer({ seconds, plannedMin, running }: { seconds: number; p
   );
 }
 
-/** De uitnodiging om mee te kijken: QR-code, adres en code. */
-export function JoinStrip({ watch }: { watch: { token: string; code: string } }) {
+/**
+ * De uitnodiging om mee te kijken. Naast het agendapunt een grote QR-code, zodat hij vanuit de zaal te
+ * scannen is. Staat er een stuk op het scherm, dan een smalle strook met alleen het adres en de code:
+ * een kleine QR-code is van een afstand niet te lezen en zou alleen ruimte van het stuk afnemen.
+ */
+function Join({ watch, big }: { watch: { token: string; code: string }; big?: boolean }) {
+  const typed = (
+    <>
+      ga naar <span className="join-url">{window.location.host}/meekijken</span> en typ <span className="join-code">{fmtCode(watch.code)}</span>
+    </>
+  );
+  if (!big) {
+    return (
+      <div className="join">
+        <span>
+          <strong>Meekijken op je eigen scherm:</strong> {typed}
+        </span>
+      </div>
+    );
+  }
   return (
-    <div className="join">
-      <Qr text={watchUrl(watch.token)} size={92} label="QR-code om mee te kijken" />
+    <div className="join big">
+      <Qr text={watchUrl(watch.token)} size={320} label="QR-code om mee te kijken" />
       <div>
         <strong>Meekijken op je eigen scherm</strong>
-        <div>
-          Scan de code, of ga naar <span className="join-url">{window.location.host}/meekijken</span> en typ <span className="join-code">{fmtCode(watch.code)}</span>
-        </div>
+        <div>Scan de code, of {typed}</div>
       </div>
     </div>
   );
@@ -83,7 +99,6 @@ export function Screen({
   serverNow,
   chunkUrl,
   actions,
-  footer,
 }: {
   data: ScreenData;
   /** De tijd volgens de server, in ms: zo loopt de klok op elk apparaat gelijk. */
@@ -91,7 +106,6 @@ export function Screen({
   chunkUrl: (docId: string, n: number) => string;
   /** Knoppen rechtsboven (volledig scherm, sluiten). */
   actions?: ReactNode;
-  footer?: ReactNode;
 }) {
   const [pages, setPages] = useState(0);
   const { meeting, live, doc } = data;
@@ -103,6 +117,8 @@ export function Screen({
   const spent = (it: { id: string; spentSec: number }) => it.spentSec + (running(it) ? Math.max(0, (serverNow - Date.parse(live.itemStartedAt!)) / 1000) : 0);
   const total = live.startedAt ? Math.max(0, (serverNow - Date.parse(live.startedAt)) / 1000) : 0;
   const page = live.docPage ?? 1;
+  // De code om mee te kijken staat alleen op het presentatiescherm (ingelogd), nooit bij de meekijker zelf.
+  const watch = isLive ? (data.watch ?? null) : null;
 
   return (
     <div className="live screen">
@@ -164,6 +180,7 @@ export function Screen({
               <DocStage key={doc.id} doc={doc} page={page} chunkUrl={(n) => chunkUrl(doc.id, n)} onPages={setPages} tall />
             </div>
           ) : current ? (
+            <div className={watch ? "screen-split" : undefined}>
             <article className="live-item screen-item" key={current.item.id}>
               <div className="live-head">
                 <span className="live-nr">{current.number}</span>
@@ -183,6 +200,8 @@ export function Screen({
                 </p>
               )}
             </article>
+            {watch && <Join watch={watch} big />}
+            </div>
           ) : (
             <div className="live-start">
               <h1>Even geduld</h1>
@@ -192,7 +211,11 @@ export function Screen({
         </main>
       </div>
 
-      {footer && <footer className="live-foot screen-foot">{footer}</footer>}
+      {watch && doc && (
+        <footer className="live-foot screen-foot">
+          <Join watch={watch} />
+        </footer>
+      )}
     </div>
   );
 }

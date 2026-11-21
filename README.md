@@ -193,11 +193,17 @@ Open daarna http://localhost:8888/#lokale-testcode om het eerste beheerdersaccou
 
 ## Testen
 
-Met de lokale server aan en een lege database:
+Bij elke pull request en elke wijziging op `main` draait GitHub de typecontrole, de bouw en de volledige test (`.github/workflows/test.yml`), tegen een lokale server met een lege database. Daar zijn geen geheimen of verbinding met Netlify voor nodig.
+
+Zelf draaien:
 
 ```bash
+npm run build
+scripts/start-test-server.sh
 npm run test:e2e
 ```
+
+`scripts/start-test-server.sh` zet de testinstellingen (`scripts/test.env`) als `.env`, start de lokale server met een lege database en voert de migraties uit. De test verwacht een lege database: start de server opnieuw voor een volgende ronde.
 
 De test start zelf een nagebouwde mailserver (poort 2525) en een nagebouwde Plaud-server (poort 8899); die poorten moeten vrij zijn. De hele test duurt enkele minuten.
 

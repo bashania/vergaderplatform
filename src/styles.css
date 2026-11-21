@@ -1756,6 +1756,32 @@ dialog.modal::backdrop {
   align-items: center;
   gap: 16px;
 }
+.screen-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: clamp(20px, 3vw, 48px);
+  max-width: 1500px;
+  margin: 0 auto;
+}
+.screen-split .screen-item {
+  margin: 0;
+}
+.join.big {
+  flex-direction: column;
+  width: 360px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+.join.big .join-code {
+  display: block;
+  margin-top: 6px;
+  font-size: 2rem;
+}
 .qr {
   flex: none;
   border-radius: 6px;
@@ -1800,5 +1826,11 @@ dialog.modal::backdrop {
   .join {
     gap: 10px;
     font-size: 0.9rem;
+  }
+  .screen-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .join.big {
+    width: auto;
   }
 }

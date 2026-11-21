@@ -38,6 +38,25 @@ async function load(doc: StageDoc, chunkUrl: (n: number) => string, onProgress: 
 }
 
 /**
+ * Vangnet als de pdf hier niet te tekenen is (een oudere browser, een beschadigd bestand): een gewone
+ * koppeling naar het bestand, dat al is opgehaald. Openen in de pdf-lezer van het toestel geeft dus geen
+ * extra toegang. Een koppeling in plaats van een venster dat via script opent: dat laatste houden
+ * telefoons vaak tegen.
+ */
+function OpenOwn({ data }: { data: Uint8Array }) {
+  const url = useMemo(() => URL.createObjectURL(new Blob([data as BlobPart], { type: "application/pdf" })), [data]);
+  useEffect(() => () => URL.revokeObjectURL(url), [url]);
+  return (
+    <>
+      <p>Dit toestel kan de pdf niet in het scherm tonen.</p>
+      <a className="btn secondary" href={url} target="_blank" rel="noopener">
+        Open het stuk in je eigen pdf-lezer
+      </a>
+    </>
+  );
+}
+
+/**
  * Het stuk dat op het scherm staat. `chunkUrl` bepaalt waar de delen vandaan komen: voor wie is
  * ingelogd het gewone adres van het stuk, voor een meekijker het adres dat alleen het getoonde stuk geeft.
  */
@@ -88,7 +107,13 @@ export function DocStage({
       ) : !state.data ? (
         <div className="stage-msg">Stuk ophalen… {Math.round(state.progress * 100)}%</div>
       ) : pdf ? (
-        <PdfView data={state.data} page={page} fit={fit} onPages={onPages} />
+        <PdfView
+          data={state.data}
+          page={page}
+          fit={fit}
+          onPages={onPages}
+          fallback={<OpenOwn data={state.data} />}
+        />
       ) : image ? (
         <img src={image} alt={doc.name} />
       ) : (
