@@ -24,7 +24,7 @@
   --line: #e8e5db;
   --bg: #fbfaf5; /* krijt */
   --surface: #ffffff;
-  --warm: #b4500b; /* gloed: te laat en fout, altijd met een woord erbij */
+  --warm: #a84a0a; /* gloed: te laat en fout, altijd met een woord erbij. 4,9:1 op gloed-zacht, 5,8:1 op wit */
   --warm-tint: #fcebdd;
   --info: #4c2fc0;
   --info-tint: #ede9fe; /* lila-zacht */
@@ -127,6 +127,28 @@ textarea {
   height: 1px;
   overflow: hidden;
   clip-path: inset(50%);
+  white-space: nowrap;
+}
+/* Eerste stap met Tab: het menu overslaan. Alleen zichtbaar als hij de focus heeft. */
+.skip-link {
+  position: absolute;
+  left: 12px;
+  top: -80px;
+  z-index: 100;
+  padding: 8px 18px;
+  border-radius: var(--pill);
+  background: var(--ink);
+  color: #fff;
+  font-weight: 700;
+  text-decoration: none;
+}
+.skip-link:focus {
+  top: 12px;
+  color: #fff;
+}
+/* De inhoud krijgt de focus na een wissel van pagina; daar hoort geen rand omheen. */
+.main:focus {
+  outline: none;
 }
 
 /* ---------- opbouw ---------- */
@@ -667,6 +689,8 @@ textarea.input {
   border-bottom-color: var(--accent);
 }
 .table-wrap {
+  /* relative: een verborgen kop (sr-only) blijft zo binnen het schuifvlak en maakt de pagina niet breder. */
+  position: relative;
   overflow-x: auto;
 }
 table.table {
@@ -863,10 +887,22 @@ table.table {
 }
 .doc {
   display: flex;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 6px 10px;
   align-items: center;
   padding: 6px 0;
   min-width: 0;
+}
+/* Is de regel te smal voor naam en knoppen naast elkaar, dan gaan de knoppen eronder: de naam breekt niet per letter af. */
+.doc > .grow {
+  flex-basis: 170px;
+}
+.doc-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
 }
 .doc .ext {
   flex: none;
@@ -1125,6 +1161,21 @@ dialog.modal::backdrop {
   .list > li {
     padding-left: 16px;
     padding-right: 16px;
+  }
+  /* Past de tekst niet naast de knoppen, dan gaan de knoppen eronder. */
+  .list > li {
+    flex-wrap: wrap;
+  }
+  .list > li > .grow {
+    flex-basis: 200px;
+  }
+}
+/* Heel smal scherm (320 px): een lange knop mag over twee regels in plaats van buiten beeld te vallen. */
+@media (max-width: 400px) {
+  .btn {
+    max-width: 100%;
+    white-space: normal;
+    text-align: left;
   }
 }
 @media (prefers-reduced-motion: reduce) {

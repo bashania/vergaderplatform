@@ -95,7 +95,7 @@ function CodeForm({ waiting, ended, onToken }: { waiting: boolean; ended: boolea
   }
 
   return (
-    <div className="auth">
+    <main className="auth">
       <div className="auth-card">
         <span className="brand">
           <Brand />
@@ -137,6 +137,6 @@ function CodeForm({ waiting, ended, onToken }: { waiting: boolean; ended: boolea
           </>
         )}
       </div>
-    </div>
+    </main>
   );
 }

@@ -3,7 +3,7 @@ import { BRAND } from "../../shared/brand";
 import { api, errorText } from "../api";
 import { useUser } from "../auth";
 import { fmtDateTime, type Meeting } from "../lib";
-import { Button, Field, Form, Loader, Modal, useLoad, useRun, useToast } from "../ui";
+import { Button, Field, Form, Loader, Modal, TableWrap, useLoad, useRun, useToast } from "../ui";
 
 type Settings = { host: string; port: number; security: "starttls" | "ssl" | "geen"; user: string; fromName: string; fromAddress: string; hasPassword: boolean };
 type LogRow = { at: string; kind: string; toEmail: string; subject: string; status: "bezig" | "verzonden" | "mislukt"; error: string };
@@ -178,7 +178,7 @@ export function MailSettingsCard() {
               {data && data.log.length > 0 && (
                 <details>
                   <summary className="small">Laatst verstuurde e-mails</summary>
-                  <div className="table-wrap" style={{ marginTop: 8 }}>
+                  <TableWrap label="Laatst verstuurde e-mails" style={{ marginTop: 8 }}>
                     <table className="table">
                       <tbody>
                         {data.log.map((l, i) => (
@@ -194,7 +194,7 @@ export function MailSettingsCard() {
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                  </TableWrap>
                 </details>
               )}
             </>
@@ -219,7 +219,7 @@ export function MeetingMailModal({ meeting, kind, count, onClose }: { meeting: M
               {result.sent} {result.sent === 1 ? "e-mail" : "e-mails"} verstuurd.
             </strong>
           </p>
-          {result.failed.length > 0 && <div className="form-error">Niet gelukt bij: {result.failed.join(", ")}. De platformbeheerder ziet de reden in het logboek van de e-mail.</div>}
+          {result.failed.length > 0 && <div className="form-error" role="alert">Niet gelukt bij: {result.failed.join(", ")}. De platformbeheerder ziet de reden in het logboek van de e-mail.</div>}
           <div className="form-foot">
             <Button onClick={onClose}>Klaar</Button>
           </div>

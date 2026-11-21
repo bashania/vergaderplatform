@@ -78,7 +78,7 @@ export default function DashboardPage() {
     <div className="page">
       <div className="page-head">
         <div>
-          <h1>
+          <h1 data-title="Overzicht">
             {greeting()}, {firstName(user.name)}
           </h1>
           <p className="lead">

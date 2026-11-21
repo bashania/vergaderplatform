@@ -4,7 +4,7 @@ import { api } from "../api";
 import { useAuth, useUser } from "../auth";
 import { LinkModal, type LinkInfo } from "../components/LinkModal";
 import type { Role } from "../lib";
-import { BeslotenBadge, Button, Empty, Field, Form, Loader, useLoad, useRun, useToast } from "../ui";
+import { BeslotenBadge, Button, Empty, Field, Form, Loader, TableWrap, useLoad, useRun, useToast } from "../ui";
 
 type Person = {
   id: string;
@@ -123,13 +123,15 @@ export default function OrganisatiePage() {
             </span>
           </div>
           {people.length ? (
-            <div className="table-wrap">
+            <TableWrap label="Iedereen met toegang">
               <table className="table">
                 <thead>
                   <tr>
                     <th>Naam</th>
                     <th>Neemt deel aan</th>
-                    <th />
+                    <th>
+                      <span className="sr-only">Handelingen</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -182,7 +184,7 @@ export default function OrganisatiePage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </TableWrap>
           ) : (
             <Empty title="Nog niemand" />
           )}

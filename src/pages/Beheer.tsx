@@ -4,7 +4,7 @@ import { api } from "../api";
 import { useAuth, useUser } from "../auth";
 import { LinkModal, type LinkInfo } from "../components/LinkModal";
 import { fmtDateTime } from "../lib";
-import { Button, Empty, Field, Form, Loader, Modal, useLoad, useRun, useToast } from "../ui";
+import { Button, Empty, Field, Form, Loader, Modal, TableWrap, useLoad, useRun, useToast } from "../ui";
 
 type AdminUser = {
   id: string;
@@ -327,7 +327,7 @@ function Users() {
         </Button>
       </div>
       <Loader loading={loading} error={error}>
-        <div className="table-wrap">
+        <TableWrap label="Accounts">
           <table className="table">
             <thead>
               <tr>
@@ -335,7 +335,9 @@ function Users() {
                 <th>Status</th>
                 <th>Organisaties</th>
                 <th>Laatst ingelogd</th>
-                <th />
+                <th>
+                      <span className="sr-only">Handelingen</span>
+                    </th>
               </tr>
             </thead>
             <tbody>
@@ -374,7 +376,7 @@ function Users() {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableWrap>
       </Loader>
       {creating && (
         <NewAdmin
@@ -567,7 +569,7 @@ function AuditLog() {
       </div>
       <Loader loading={loading} error={error}>
         {data?.entries.length ? (
-          <div className="table-wrap">
+          <TableWrap label="Logboek">
             <table className="table">
               <thead>
                 <tr>
@@ -586,7 +588,7 @@ function AuditLog() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </TableWrap>
         ) : (
           <Empty title="Nog geen wijzigingen vastgelegd" />
         )}

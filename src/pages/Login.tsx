@@ -10,7 +10,7 @@ import { Brand, Button, Field, Form } from "../ui";
 function AuthShell({ title, lead, children }: { title: string; lead?: ReactNode; children: ReactNode }) {
   const { orgName } = useAuth();
   return (
-    <div className="auth">
+    <main className="auth">
       <div className="auth-card">
         <span className="brand">
           <Brand orgName={orgName} />
@@ -21,7 +21,7 @@ function AuthShell({ title, lead, children }: { title: string; lead?: ReactNode;
         </div>
         {children}
       </div>
-    </div>
+    </main>
   );
 }
 
@@ -211,7 +211,7 @@ export function WelcomePage() {
   if (error) {
     return (
       <AuthShell title="Link werkt niet">
-        <div className="form-error">{error}</div>
+        <div className="form-error" role="alert">{error}</div>
         <a className="btn secondary" href="/">
           Naar het inlogscherm
         </a>

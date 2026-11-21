@@ -52,7 +52,7 @@ export default function SchermPage() {
     return (
       <div className="live">
         <div className="live-wait">
-          {error ? <div className="form-error">{error}</div> : <p className="muted">Laden…</p>}
+          {error ? <div className="form-error" role="alert">{error}</div> : <p className="muted">Laden…</p>}
           {error && (
             <Link className="btn secondary" to="/">
               Naar het overzicht

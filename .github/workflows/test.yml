@@ -87,3 +87,42 @@ jobs:
       - name: Logboek van de server
         if: failure()
         run: tail -n 200 dev.log
+
+  # Toegankelijkheid: elk scherm langs WCAG 2.2 A en AA op drie breedtes, plus toetsenbord, paginatitels
+  # en of het scherm op een smalle telefoon in de breedte past.
+  toegankelijkheid:
+    name: Toegankelijkheid
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Bouwen
+        run: npm run build
+      - name: Browser voor de test
+        run: |
+          npm install --no-save playwright@1.63.0
+          npx playwright install --with-deps chromium
+      - name: Lokale server met lege database
+        run: scripts/start-test-server.sh
+      - name: Demogegevens
+        run: node scripts/film/seed-demo.cjs > demo.json
+      - name: Schermen nalopen
+        run: node scripts/a11y-test.cjs demo.json
+        env:
+          OUT: schermafbeeldingen
+      - name: Schermafbeeldingen van wat misging bewaren
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: schermafbeeldingen-toegankelijkheid
+          path: schermafbeeldingen
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Logboek van de server
+        if: failure()
+        run: tail -n 200 dev.log

@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type ButtonHTMLAttributes,
+  type CSSProperties,
   type FormEvent,
   type ReactNode,
 } from "react";
@@ -133,7 +134,7 @@ export function useLoad<T>(path: string | null) {
 
 /** Standaardweergave voor laden en fouten rond een pagina-inhoud. */
 export function Loader({ loading, error, children }: { loading: boolean; error?: string; children: ReactNode }) {
-  if (error) return <div className="form-error">{error}</div>;
+  if (error) return <div className="form-error" role="alert">{error}</div>;
   if (loading) return <p className="muted">Laden…</p>;
   return <>{children}</>;
 }
@@ -273,6 +274,30 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
 }
 
 /** Kenmerk van een besloten overleg. */
+/**
+ * Een tabel die op een smal scherm zijwaarts schuift. Schuift hij echt, dan is hij ook met het
+ * toetsenbord te bereiken en te schuiven; anders komt er geen extra stap in de Tab-volgorde bij.
+ */
+export function TableWrap({ label, children, style }: { label: string; children: ReactNode; style?: CSSProperties }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [scrolls, setScrolls] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const check = () => setScrolls(el.scrollWidth > el.clientWidth + 1);
+    check();
+    const observer = new ResizeObserver(check);
+    observer.observe(el);
+    if (el.firstElementChild) observer.observe(el.firstElementChild);
+    return () => observer.disconnect();
+  }, []);
+  return (
+    <div ref={ref} className="table-wrap" style={style} {...(scrolls ? { tabIndex: 0, role: "region", "aria-label": label } : {})}>
+      {children}
+    </div>
+  );
+}
+
 export function BeslotenBadge() {
   return (
     <span className="badge info" title="Alleen de deelnemers zien dit overleg; beheerders van de organisatie niet.">

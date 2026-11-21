@@ -41,7 +41,7 @@ export default function AanwezigheidPage() {
   }
 
   return (
-    <div className="auth">
+    <main className="auth">
       <div className="auth-card">
         <span className="brand">
           <Brand />
@@ -92,6 +92,6 @@ export default function AanwezigheidPage() {
           </>
         )}
       </div>
-    </div>
+    </main>
   );
 }

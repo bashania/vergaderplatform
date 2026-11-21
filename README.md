@@ -184,6 +184,16 @@ Het product heet Kortweg. De huisstijl is vastgelegd in het Kortweg Design Syste
 - **Schrijven:** kort, in de je-vorm. Een samenvatting mag openen met "Kortweg:", hooguit één keer per scherm of e-mail.
 - **Instructiefilm:** `public/instructiefilm.mp4` is opgenomen in deze huisstijl. Verandert de vormgeving of een scherm dat in de film zit, neem hem dan opnieuw op (zie verderop).
 
+### Toegankelijkheid
+
+Het doel is WCAG 2.2 niveau AA. De automatische test bewaakt wat een machine kan meten; dat is naar schatting een derde tot de helft van de eisen. Niet gemeten en dus niet beloofd: of teksten begrijpelijk zijn, of een schermlezer het geheel prettig voorleest en of de pdf's die mensen zelf uploaden toegankelijk zijn.
+
+- **Kleur:** tekst haalt overal minstens 4,5:1. Gloed (`--warm`) is daarom iets donkerder dan in de eerste versie van de huisstijl: `#a84a0a` in plaats van `#b4500b`, dat op gloed-zacht op 4,4:1 bleef steken.
+- **Titel per scherm:** `src/components/PageTitle.tsx` zet de kop van het scherm (h1) in de titel van het tabblad en zegt een wissel van scherm aan voor schermlezers. Een nieuw scherm doet vanzelf mee; wil je een andere titel dan de kop, zet dan `data-title` op de h1. Vergadermodus en presentatiescherm krijgen hun soort ervoor, zodat de tabbladen uit elkaar te houden zijn.
+- **Toetsenbord:** de eerste Tab is "Naar de inhoud". Na een wissel van pagina staat de focus in de inhoud. Een tabel die zijwaarts schuift, is met het toetsenbord te bereiken (`TableWrap` in `src/ui.tsx`).
+- **Smal scherm:** tot 320 px breed schuift niets zijwaarts. Bij een stuk gaan de knoppen onder de naam als ze er niet naast passen.
+- **Foutmeldingen** hebben `role="alert"` en worden voorgelezen.
+
 ### Naam wijzigen
 
 De naam staat in de code op één plek: `shared/brand.ts`. Daarnaast staat hij in bestanden die geen code kunnen inlezen: `index.html` (titel), `public/manifest.webmanifest`, de iconen in `public/` en de titelkaart in `scripts/film/film.cjs`. Passkeys blijven werken bij een andere naam: die hangen aan het webadres (`RP_ID`), niet aan de naam.
@@ -231,6 +241,12 @@ Daarnaast draait GitHub de schermen in drie browsers: Chromium, WebKit (de brows
 ```bash
 node scripts/film/seed-demo.cjs > demo.json
 BROWSER=chromium node scripts/browser-test.cjs demo.json
+```
+
+De toegankelijkheidstest (`scripts/a11y-test.cjs`) loopt ruim vijftig schermtoestanden na op drie breedtes (breed, telefoon en 320 px), met de regels van WCAG 2.2 A en AA uit axe-core. Hij controleert ook wat axe niet ziet: of het scherm in de breedte past, of elk scherm een eigen titel heeft en of het toetsenbord werkt (sla-link, focus na een wissel van pagina, zichtbare focusrand). Zelf draaien, op dezelfde demogegevens:
+
+```bash
+node scripts/a11y-test.cjs demo.json
 ```
 
 Het terugzetten van een back-up test je met de back-up die de volledige test wegschrijft:
