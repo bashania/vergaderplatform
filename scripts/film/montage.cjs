@@ -16,8 +16,8 @@ const BAR = 120;
 const filters = [
   "fps=30",
   `scale=${W}:${H}:flags=lanczos`,
-  `pad=${W}:${H + BAR}:0:0:color=0x13283b`,
-  `drawbox=x=0:y=${H}:w=${W}:h=4:color=0xf2b441:t=fill`,
+  `pad=${W}:${H + BAR}:0:0:color=0x18181b`,
+  `drawbox=x=0:y=${H}:w=${W}:h=4:color=0xffd92e:t=fill`,
 ];
 subs.forEach((s, i) => {
   // Tekst uit een bestand: geen gedoe met aanhalingstekens, dubbele punten of komma's in het filter.

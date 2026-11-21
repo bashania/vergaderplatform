@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { BRAND } from "../../shared/brand";
 import { api, errorText } from "../api";
 import { useUser } from "../auth";
 import { fmtDateTime, type Meeting } from "../lib";
@@ -85,7 +86,7 @@ export function MailSettingsCard() {
                 </div>
                 <div className="form-row">
                   <Field label="Naam afzender">
-                    <input className="input" maxLength={100} placeholder="Vergaderplatform" value={form.fromName} onChange={(e) => set({ fromName: e.target.value })} />
+                    <input className="input" maxLength={100} placeholder={BRAND} value={form.fromName} onChange={(e) => set({ fromName: e.target.value })} />
                   </Field>
                   <Field label="Afzenderadres">
                     <input className="input" type="email" required maxLength={200} value={form.fromAddress} onChange={(e) => set({ fromAddress: e.target.value })} />

@@ -2,6 +2,7 @@ import { q, q1 } from "./db";
 import { currentDeployContext } from "./files";
 import { bad, email as emailAddress, HttpError, int, oneOf, optStr, str } from "./http";
 import { hasSecretKey, open, seal } from "./secret";
+import { BRAND } from "../shared/brand";
 
 /**
  * E-mail vanuit het platform, via de mailserver (SMTP) die de platformbeheerder instelt.
@@ -38,7 +39,7 @@ export async function saveSmtp(b: Record<string, unknown>): Promise<void> {
     security,
     user: optStr(b.user, "Gebruikersnaam", 200),
     pass: typeof b.pass === "string" && b.pass ? b.pass.slice(0, 500) : (previous?.pass ?? ""),
-    fromName: optStr(b.fromName, "Naam afzender", 100) || "Vergaderplatform",
+    fromName: optStr(b.fromName, "Naam afzender", 100) || BRAND,
     fromAddress: emailAddress(b.fromAddress),
   };
   await q(`INSERT INTO settings (key, value) VALUES ('smtp', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [seal(JSON.stringify(settings))]);
@@ -80,16 +81,19 @@ function render(m: Message, brand: string): { text: string; html: string } {
     ...(m.button ? [`${m.button.label}: ${m.button.url}`] : []),
     `--\n${m.footer}`,
   ].join("\n\n");
-  const html = `<!doctype html><html lang="nl"><body style="margin:0;padding:24px 12px;background:#f5f7f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#0f1c2b;font-size:15px;line-height:1.6">
-<div style="max-width:600px;margin:0 auto;background:#ffffff;border:1px solid #e1e7ec;border-radius:10px;overflow:hidden">
-<div style="padding:14px 24px;background:#13283b;color:#ffffff;font-weight:700">${esc(brand)}</div>
+  // Kleuren en vormen uit het Kortweg Design System. E-mailprogramma's laden geen eigen letters:
+  // de systeemletter blijft, de gele band en de pilknoppen dragen het merk.
+  const via = brand === BRAND ? "" : `<div style="font-size:12px;font-weight:500">via ${esc(BRAND)}</div>`;
+  const html = `<!doctype html><html lang="nl"><body style="margin:0;padding:24px 12px;background:#fbfaf5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#18181b;font-size:16px;line-height:1.6">
+<div style="max-width:600px;margin:0 auto;background:#ffffff;border:1px solid #e8e5db;border-radius:18px;overflow:hidden">
+<div style="padding:14px 24px;background:#ffd92e;color:#18181b;font-weight:700">${esc(brand)}${via}</div>
 <div style="padding:24px">
 <p style="margin:0 0 14px">Beste ${esc(m.to.name)},</p>
 ${m.intro.map((p) => `<p style="margin:0 0 14px">${br(p)}</p>`).join("\n")}
 ${(m.sections ?? [])
   .map(
     (s) =>
-      `<p style="margin:18px 0 6px;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#5a6b7d">${esc(s.title)}</p><ul style="margin:0 0 14px;padding-left:20px">${s.lines
+      `<p style="margin:18px 0 6px;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6f6c64">${esc(s.title)}</p><ul style="margin:0 0 14px;padding-left:20px">${s.lines
         .map((l) => `<li style="margin:3px 0">${br(l)}</li>`)
         .join("")}</ul>`,
   )
@@ -99,14 +103,14 @@ ${
     ? `<p style="margin:20px 0 8px;font-weight:600">${esc(m.choice.question)}</p><p style="margin:0 0 6px">${m.choice.options
         .map(
           (o) =>
-            `<a href="${esc(o.url)}" style="display:inline-block;margin:0 8px 8px 0;padding:9px 16px;border:1px solid #0b6e78;border-radius:8px;color:#0b6e78;font-weight:600;text-decoration:none">${esc(o.label)}</a>`,
+            `<a href="${esc(o.url)}" style="display:inline-block;margin:0 8px 8px 0;padding:8px 18px;border:2px solid #18181b;border-radius:999px;color:#18181b;font-weight:700;text-decoration:none">${esc(o.label)}</a>`,
         )
         .join("")}</p>`
     : ""
 }
-${m.button ? `<p style="margin:22px 0 6px"><a href="${esc(m.button.url)}" style="display:inline-block;padding:11px 20px;border-radius:8px;background:#0b6e78;color:#ffffff;font-weight:600;text-decoration:none">${esc(m.button.label)}</a></p>` : ""}
+${m.button ? `<p style="margin:22px 0 6px"><a href="${esc(m.button.url)}" style="display:inline-block;padding:11px 22px;border-radius:999px;background:#ffd92e;color:#18181b;font-weight:700;text-decoration:none">${esc(m.button.label)}</a></p>` : ""}
 </div>
-<div style="padding:14px 24px;border-top:1px solid #e1e7ec;color:#5a6b7d;font-size:12.5px">${br(m.footer)}</div>
+<div style="padding:14px 24px;border-top:1px solid #e8e5db;color:#6f6c64;font-size:13px">${br(m.footer)}</div>
 </div></body></html>`;
   return { text, html };
 }
@@ -150,7 +154,7 @@ export async function verifySmtp(): Promise<string | null> {
 export async function mailer(): Promise<Mailer | null> {
   const smtp = await smtpSettings();
   if (!smtp) return null;
-  const brand = (await q1<{ value: string }>(`SELECT value FROM settings WHERE key = 'orgName'`))?.value || "Vergaderplatform";
+  const brand = (await q1<{ value: string }>(`SELECT value FROM settings WHERE key = 'orgName'`))?.value || BRAND;
   const transport = await transportFor(smtp, true);
   return {
     async send(m) {

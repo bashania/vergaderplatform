@@ -80,7 +80,7 @@ export default function ActiesPage() {
             actions={actions}
             userId={user.id}
             onChanged={reload}
-            emptyTitle={mine ? "Je hebt geen openstaande acties" : "Geen openstaande acties"}
+            emptyTitle={mine ? "Kortweg: niets meer te doen." : "Geen openstaande acties"}
           />
         </Loader>
       </section>

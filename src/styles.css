@@ -1,28 +1,40 @@
-/* Vergaderplatform: neutrale vormgeving.
-   Opzet: vaste donkere zijbalk, lichte werkvlakte met witte kaarten.
-   Petrol als actiekleur, amber als markering, besluitnummers in mono. */
+/* Kortweg: fris en licht, volgens het Kortweg Design System.
+   Opzet: witte zijbalk, werkvlakte in krijt met witte kaarten.
+   Eén regel bepaalt bijna alles: kleur is een vlak, tekst is inkt.
+   Citroen staat op de hoofdknop, de actieve menuregel en het besluitnummer, altijd met inkt erop.
+   Knoppen en labels zijn pillen, besluitnummers staan in mono. Geen schaduwen, geen verlopen. */
 :root {
-  --ink: #13283b;
-  --ink-deep: #0c1c2b;
-  --accent: #0b6e78;
-  --accent-hover: #095760;
-  --accent-tint: #dceff1;
-  --accent-wash: #f1f8f9;
-  --mark: #f2b441;
-  --text: #0f1c2b;
-  --text-2: #354455;
-  --text-3: #5a6b7d;
-  --border: #c5cfd9;
-  --line: #e1e7ec;
-  --bg: #f5f7f9;
+  --ink: #18181b; /* inkt: alle tekst, lijnen en nummers */
+  --ink-deep: #0e0e10;
+  --accent: #18181b; /* accent in tekst en lijn is inkt: links, focus, vinkjes */
+  --accent-hover: #000000;
+  --accent-tint: #fff3b0; /* citroen-zacht: wassing met inkt erop */
+  --accent-wash: #fffbe6; /* citroen-waas: achtergrond van een besluit */
+  --brand: #ffd92e; /* citroen: alleen als vlak, nooit als tekstkleur */
+  --brand-hover: #f5cb00;
+  --on-brand: #18181b;
+  --mark: #ffd92e;
+  --mark-deep: #a66f00; /* waarschuwing in een smalle balk, waar citroen te licht is */
+  --lila: #a78bfa; /* tweede kleur, klein gebruikt; geen tekstkleur */
+  --text: #18181b;
+  --text-2: #55534d; /* inkt-zacht */
+  --text-3: #6f6c64; /* inkt-stil, vanaf 14 px */
+  --border: #d3cfc2;
+  --rand: #8a867c; /* rand van invoervelden en keuzerondjes, 3,5:1 op wit */
+  --line: #e8e5db;
+  --bg: #fbfaf5; /* krijt */
   --surface: #ffffff;
-  --warm: #b4500b;
+  --warm: #b4500b; /* gloed: te laat en fout, altijd met een woord erbij */
   --warm-tint: #fcebdd;
-  --info: #1d4ed8;
-  --info-tint: #e8effe;
-  --radius: 10px;
-  --shadow: 0 1px 2px rgb(15 28 43 / 5%), 0 6px 20px rgb(15 28 43 / 4%);
-  --font: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --info: #4c2fc0;
+  --info-tint: #ede9fe; /* lila-zacht */
+  --radius: 18px; /* kaarten */
+  --radius-s: 12px; /* invoervelden en vlakken binnen een kaart */
+  --radius-l: 28px; /* merkvlakken en vensters */
+  --pill: 999px; /* knoppen, labels, nummers */
+  --shadow: none;
+  --font: "Figtree", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --display: "Gabarito", "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   color-scheme: light;
 }
@@ -40,8 +52,8 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font);
-  font-size: 15px;
-  line-height: 1.65;
+  font-size: 16px;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
 h1,
@@ -50,17 +62,23 @@ h3,
 p {
   margin: 0;
 }
+h1,
+h2,
+h3 {
+  font-family: var(--display);
+  letter-spacing: -0.015em;
+}
 h1 {
-  font-size: 1.75rem;
-  font-weight: 700;
-  line-height: 1.2;
+  font-size: 1.875rem;
+  font-weight: 800;
+  line-height: 1.15;
   color: var(--ink);
   text-wrap: balance;
 }
 h2 {
-  font-size: 1.1rem;
-  font-weight: 700;
-  line-height: 1.3;
+  font-size: 1.25rem;
+  font-weight: 800;
+  line-height: 1.25;
 }
 h3 {
   font-size: 1rem;
@@ -125,8 +143,9 @@ textarea {
   flex-direction: column;
   gap: 20px;
   padding: 24px 16px 16px;
-  color: #fff;
-  background: linear-gradient(180deg, var(--ink), var(--ink-deep));
+  color: var(--text);
+  background: var(--surface);
+  border-right: 1px solid var(--line);
   overflow-y: auto;
 }
 .brand {
@@ -142,11 +161,15 @@ textarea {
   width: 36px;
   height: 36px;
 }
+/* Het woordmerk: de naam in kleine letters, in de kopletter. */
 .brand strong {
   display: block;
-  font-size: 1.05rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-family: var(--display);
+  font-size: 1.6rem;
+  font-weight: 900;
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+  text-transform: lowercase;
 }
 .brand small {
   display: block;
@@ -158,7 +181,7 @@ textarea {
   padding: 0 8px;
 }
 .sidebar .brand:hover {
-  color: #fff;
+  color: var(--ink);
 }
 .nav {
   display: flex;
@@ -170,26 +193,26 @@ textarea {
   align-items: center;
   gap: 12px;
   padding: 9px 12px;
-  border-radius: 8px;
-  color: rgb(255 255 255 / 88%);
+  border-radius: var(--pill);
+  color: var(--text-2);
   font-weight: 600;
   text-decoration: none;
 }
+/* Meldt in het menu dat een onderdeel van het platform niet werkt. */
 .nav-dot {
   width: 9px;
   height: 9px;
   margin-left: auto;
   border-radius: 50%;
-  background: var(--amber, #f59e0b);
+  background: var(--warm);
 }
 .nav a:hover {
-  background: rgb(255 255 255 / 10%);
-  color: #fff;
+  background: var(--line);
+  color: var(--ink);
 }
 .nav a.active {
-  background: rgb(255 255 255 / 16%);
-  color: #fff;
-  box-shadow: inset 3px 0 0 var(--mark);
+  background: var(--brand);
+  color: var(--on-brand);
 }
 .nav .nav-label {
   margin: 14px 12px 4px;
@@ -197,7 +220,7 @@ textarea {
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: rgb(255 255 255 / 55%);
+  color: var(--text-3);
 }
 .orgswitch {
   display: flex;
@@ -211,10 +234,10 @@ textarea {
 .orgswitch .orgname {
   width: 100%;
   padding: 8px 12px;
-  border: 1px solid rgb(255 255 255 / 25%);
-  border-radius: 8px;
-  background: rgb(255 255 255 / 12%);
-  color: #fff;
+  border: 1px solid var(--rand);
+  border-radius: var(--radius-s);
+  background: var(--bg);
+  color: var(--ink);
   font-weight: 600;
   line-height: 1.4;
   overflow-wrap: anywhere;
@@ -223,7 +246,7 @@ textarea {
   cursor: pointer;
 }
 .orgswitch select:focus-visible {
-  outline: 2px solid var(--mark);
+  outline: 2px solid var(--ink);
   outline-offset: 1px;
 }
 .orgswitch select option {
@@ -233,7 +256,7 @@ textarea {
 .sidebar-foot {
   margin-top: auto;
   padding-top: 12px;
-  border-top: 1px solid rgb(255 255 255 / 18%);
+  border-top: 1px solid var(--line);
 }
 .sidebar-foot .who {
   padding: 4px 12px 8px;
@@ -243,7 +266,7 @@ textarea {
 }
 .sidebar-foot .who span {
   display: block;
-  color: rgb(255 255 255 / 65%);
+  color: var(--text-3);
 }
 .topbar,
 .scrim {
@@ -344,12 +367,9 @@ textarea {
   align-items: center;
   gap: 10px;
 }
+/* Geen gekleurde streep voor een kaartkop: een sectie begint met zijn kop. */
 .section-title::before {
-  content: "";
-  width: 4px;
-  height: 1.1em;
-  border-radius: 2px;
-  background: var(--accent);
+  content: none;
 }
 .list {
   list-style: none;
@@ -390,7 +410,7 @@ textarea {
   flex: none;
   width: 54px;
   padding: 6px 0;
-  border-radius: 8px;
+  border-radius: var(--radius-s);
   background: var(--accent-tint);
   color: var(--ink);
   text-align: center;
@@ -398,8 +418,9 @@ textarea {
 }
 .dateblock b {
   display: block;
+  font-family: var(--display);
   font-size: 1.3rem;
-  font-weight: 700;
+  font-weight: 800;
 }
 .dateblock span {
   font-size: 0.72rem;
@@ -431,21 +452,21 @@ textarea {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 8px 16px;
-  border: 1px solid var(--accent);
-  border-radius: 8px;
-  background: var(--accent);
-  color: #fff;
-  font-weight: 600;
+  padding: 8px 18px;
+  border: 1.5px solid var(--brand);
+  border-radius: var(--pill);
+  background: var(--brand);
+  color: var(--on-brand);
+  font-weight: 700;
   line-height: 1.4;
   text-decoration: none;
   cursor: pointer;
   white-space: nowrap;
 }
 .btn:hover {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
-  color: #fff;
+  background: var(--brand-hover);
+  border-color: var(--brand-hover);
+  color: var(--on-brand);
 }
 .btn.secondary {
   background: var(--surface);
@@ -487,15 +508,15 @@ textarea {
   cursor: default;
 }
 .sidebar .btn.ghost {
-  color: rgb(255 255 255 / 88%);
+  color: var(--text-2);
   justify-content: flex-start;
   width: 100%;
   padding: 9px 12px;
   gap: 12px;
 }
 .sidebar .btn.ghost:hover {
-  background: rgb(255 255 255 / 10%);
-  color: #fff;
+  background: var(--line);
+  color: var(--ink);
 }
 .badge {
   display: inline-flex;
@@ -540,8 +561,8 @@ select.input,
 textarea.input {
   width: 100%;
   padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid var(--rand);
+  border-radius: var(--radius-s);
   background: var(--surface);
   line-height: 1.5;
 }
@@ -566,7 +587,7 @@ textarea.input {
 }
 .form-error {
   padding: 8px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-s);
   background: var(--warm-tint);
   color: var(--warm);
   font-weight: 600;
@@ -609,9 +630,9 @@ textarea.input {
 }
 .notice {
   padding: 10px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-s);
   background: var(--info-tint);
-  color: #1e3a8a;
+  color: var(--ink);
 }
 .notice.warm {
   background: var(--warm-tint);
@@ -740,7 +761,7 @@ table.table {
 .preview {
   padding: 10px 14px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-s);
   background: var(--bg);
   max-height: 260px;
   overflow-y: auto;
@@ -784,16 +805,32 @@ table.table {
   gap: 12px;
   align-items: flex-start;
   padding: 10px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-s);
   background: var(--accent-wash);
   border: 1px solid var(--accent-tint);
 }
+/* Het besluitnummer: mono in een pil van citroen. Het herkenbaarste detail, nergens anders voor gebruiken. */
+.nr-pill {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: var(--pill);
+  background: var(--brand);
+  font-family: var(--mono);
+  font-size: 0.87em;
+  font-weight: 600;
+  color: var(--on-brand);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .decision .nr {
   flex: none;
+  padding: 1px 10px;
+  border-radius: var(--pill);
+  background: var(--brand);
   font-family: var(--mono);
-  font-size: 0.93em;
+  font-size: 0.87em;
   font-weight: 600;
-  color: var(--ink);
+  color: var(--on-brand);
   font-variant-numeric: tabular-nums;
 }
 .action {
@@ -802,12 +839,27 @@ table.table {
   align-items: flex-start;
   padding: 6px 0;
 }
+/* Een actie tik je dicht in een rondje. */
 .action input[type="checkbox"] {
   flex: none;
-  width: 18px;
-  height: 18px;
-  margin-top: 4px;
-  accent-color: var(--accent);
+  width: 20px;
+  height: 20px;
+  margin: 3px 0 0;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 2px solid var(--rand);
+  border-radius: 50%;
+  background: var(--surface);
+  cursor: pointer;
+}
+.action input[type="checkbox"]:checked {
+  border-color: var(--ink);
+  background: var(--ink);
+  box-shadow: inset 0 0 0 3px var(--surface);
+}
+.action input[type="checkbox"]:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 .doc {
   display: flex;
@@ -820,7 +872,7 @@ table.table {
   flex: none;
   min-width: 44px;
   padding: 2px 6px;
-  border-radius: 6px;
+  border-radius: var(--pill);
   background: var(--ink);
   color: #fff;
   font-size: 0.68rem;
@@ -856,8 +908,8 @@ table.table {
 }
 .rsvp {
   display: inline-flex;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1.5px solid var(--ink);
+  border-radius: var(--pill);
   overflow: hidden;
 }
 .rsvp button {
@@ -871,11 +923,12 @@ table.table {
   border-left: 1px solid var(--border);
 }
 .rsvp button[aria-pressed="true"] {
-  background: var(--accent);
-  color: #fff;
+  background: var(--brand);
+  color: var(--on-brand);
 }
 .rsvp button.no[aria-pressed="true"] {
   background: var(--warm);
+  color: #fff;
 }
 
 /* ---------- venster, melding, inlogscherm ---------- */
@@ -884,12 +937,12 @@ dialog.modal {
   max-height: calc(100vh - 48px);
   padding: 0;
   border: 0;
-  border-radius: 14px;
-  box-shadow: 0 24px 64px rgb(15 23 42 / 30%);
+  border-radius: var(--radius-l);
+  box-shadow: 0 24px 64px rgb(24 24 27 / 22%);
   color: var(--text);
 }
 dialog.modal::backdrop {
-  background: rgb(15 23 42 / 55%);
+  background: rgb(24 24 27 / 50%);
 }
 .modal-head {
   display: flex;
@@ -910,11 +963,11 @@ dialog.modal::backdrop {
   transform: translateX(-50%);
   max-width: calc(100vw - 32px);
   padding: 10px 18px;
-  border-radius: 10px;
+  border-radius: var(--radius);
   background: var(--ink);
   color: #fff;
   font-weight: 600;
-  box-shadow: 0 8px 28px rgb(15 23 42 / 30%);
+  box-shadow: 0 8px 28px rgb(24 24 27 / 22%);
 }
 .toast.error {
   background: var(--warm);
@@ -924,9 +977,8 @@ dialog.modal::backdrop {
   display: grid;
   place-items: center;
   padding: 24px 16px;
-  background:
-    repeating-linear-gradient(180deg, transparent 0 39px, rgb(255 255 255 / 5%) 39px 40px),
-    linear-gradient(160deg, var(--ink), var(--ink-deep));
+  /* Het inlogscherm is het merkmoment: het hele vlak in citroen. */
+  background: var(--brand);
 }
 .auth-card {
   width: min(440px, 100%);
@@ -934,9 +986,15 @@ dialog.modal::backdrop {
   flex-direction: column;
   gap: 20px;
   padding: 32px;
-  border-radius: 16px;
+  border-radius: var(--radius-l);
   background: var(--surface);
-  box-shadow: 0 24px 64px rgb(4 12 20 / 45%);
+}
+.auth-card .brand strong {
+  font-size: 2.2rem;
+}
+.auth-card .brand img {
+  width: 44px;
+  height: 44px;
 }
 .auth-card .brand {
   color: var(--ink);
@@ -981,12 +1039,12 @@ dialog.modal::backdrop {
 }
 .search input {
   padding-left: 38px;
-  border-color: rgb(255 255 255 / 25%);
-  background: rgb(255 255 255 / 12%);
-  color: #fff;
+  border-color: var(--rand);
+  background: var(--bg);
+  color: var(--text);
 }
 .search input::placeholder {
-  color: rgb(255 255 255 / 65%);
+  color: var(--text-3);
 }
 .search svg {
   position: absolute;
@@ -1012,8 +1070,9 @@ dialog.modal::backdrop {
     align-items: center;
     gap: 12px;
     padding: 10px 16px;
-    background: var(--ink);
-    color: #fff;
+    border-bottom: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink);
   }
   .topbar img {
     width: 30px;
@@ -1024,7 +1083,7 @@ dialog.modal::backdrop {
     font-weight: 700;
   }
   .topbar .btn.ghost {
-    color: #fff;
+    color: var(--ink);
   }
   .sidebar {
     position: fixed;
@@ -1042,7 +1101,7 @@ dialog.modal::backdrop {
     position: fixed;
     inset: 0;
     z-index: 25;
-    background: rgb(15 23 42 / 55%);
+    background: rgb(24 24 27 / 50%);
   }
   .page {
     padding: 20px 16px 56px;
@@ -1150,7 +1209,7 @@ dialog.modal::backdrop {
   color: #fff;
 }
 .live-top .muted {
-  color: #a9b8c6;
+  color: #b7b4aa;
 }
 .live-top .btn.ghost {
   color: #fff;
@@ -1229,7 +1288,7 @@ dialog.modal::backdrop {
   width: 100%;
   padding: 8px 10px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-s);
   background: none;
   font: inherit;
   line-height: 1.35;
@@ -1273,8 +1332,7 @@ dialog.modal::backdrop {
   color: var(--accent);
 }
 .live-step.current {
-  background: var(--accent-wash);
-  box-shadow: inset 3px 0 0 var(--accent);
+  background: var(--accent-tint);
   color: var(--ink);
   font-weight: 600;
 }
@@ -1309,8 +1367,8 @@ dialog.modal::backdrop {
   display: grid;
   place-items: center;
   border-radius: 26px;
-  background: var(--ink);
-  color: #fff;
+  background: var(--brand);
+  color: var(--on-brand);
   font-size: 1.25rem;
   font-weight: 700;
 }
@@ -1347,7 +1405,7 @@ dialog.modal::backdrop {
   transition: width 1s linear;
 }
 .live-timer.warn .bar > div {
-  background: var(--mark);
+  background: var(--mark-deep);
 }
 .live-timer.over {
   border-color: var(--warm);
@@ -1415,7 +1473,7 @@ dialog.modal::backdrop {
   height: 22px;
   display: grid;
   place-items: center;
-  border: 2px solid var(--border);
+  border: 2px solid var(--rand);
   border-radius: 50%;
 }
 .step-mark.done {
@@ -1447,8 +1505,8 @@ dialog.modal::backdrop {
   width: 100%;
   height: auto;
   aspect-ratio: 16 / 10;
-  border-radius: 8px;
-  background: #13283b;
+  border-radius: var(--radius-s);
+  background: var(--ink);
 }
 .help-body ol,
 .help-body ul {
@@ -1476,8 +1534,9 @@ dialog.modal::backdrop {
   box-shadow: var(--shadow);
 }
 .stat b {
+  font-family: var(--display);
   font-size: 1.9rem;
-  font-weight: 700;
+  font-weight: 800;
   line-height: 1.15;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
@@ -1661,7 +1720,7 @@ dialog.modal::backdrop {
   overflow: auto;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: #e6ebf0;
+  background: var(--line);
 }
 .stage.fit-page {
   align-items: center;
@@ -1686,7 +1745,7 @@ dialog.modal::backdrop {
   display: block;
   flex: none;
   background: #fff;
-  box-shadow: 0 2px 16px rgb(19 40 59 / 20%);
+  box-shadow: 0 2px 16px rgb(24 24 27 / 16%);
 }
 .stage img {
   max-width: 100%;

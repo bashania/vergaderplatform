@@ -9,6 +9,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
+import { BRAND } from "../shared/brand";
 import { api, errorText } from "./api";
 
 // ---------- iconen (lijntekeningen, 24x24) ----------
@@ -79,7 +80,7 @@ export function Brand({ orgName }: { orgName?: string }) {
     <>
       <img src="/favicon.svg" alt="" width="36" height="36" />
       <span>
-        <strong>Vergaderplatform</strong>
+        <strong>{BRAND}</strong>
         {orgName && <small>{orgName}</small>}
       </span>
     </>

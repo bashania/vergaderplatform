@@ -268,7 +268,7 @@ function downloadIcs(m: Meeting) {
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//Vergaderplatform//NL",
+    "PRODID:-//Kortweg//NL",
     "BEGIN:VEVENT",
     `UID:${m.id}@${window.location.host}`,
     `DTSTAMP:${icsStamp(new Date())}`,

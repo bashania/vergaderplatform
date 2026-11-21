@@ -233,8 +233,8 @@ export function DecisionTable({ decisions, showOverleg }: { decisions: Decision[
         <tbody>
           {decisions.map((d) => (
             <tr key={d.id}>
-              <td className="num nowrap">
-                <strong>{d.number}</strong>
+              <td className="nowrap">
+                <strong className="nr-pill">{d.number}</strong>
               </td>
               <td className="nowrap">{fmtDay(d.decidedOn)}</td>
               <td style={{ minWidth: 260 }}>

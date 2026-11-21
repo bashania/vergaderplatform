@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { BRAND } from "../shared/brand";
 import { useAuth, useUser } from "./auth";
 import { PasskeyButton } from "./components/PasskeyButton";
 import { addPasskey, deviceName, loginWithPasskey, passkeysSupported } from "./passkeys";
@@ -48,7 +49,7 @@ export default function Layout() {
     <div className={`shell ${open ? "menu-open" : ""}`}>
       <header className="topbar">
         <img src="/favicon.svg" alt="" />
-        <strong>{org?.name ?? "Vergaderplatform"}</strong>
+        <strong>{org?.name ?? BRAND}</strong>
         <Button variant="ghost" icon="menu" aria-label="Menu openen" onClick={() => setOpen(true)} />
       </header>
       <div className="scrim" onClick={() => setOpen(false)} />
