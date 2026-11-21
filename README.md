@@ -92,6 +92,8 @@ Een aantekening hoort bij één deelnemer en één agendapunt (`personal_notes`)
 
 ### E-mail en herinneringen
 
+Welke mailserver: de instellingen kennen een keuzelijst met Brevo, Mailjet en Scaleway (Europese verzenddiensten) en Microsoft 365; kiezen vult server, poort en beveiliging in. Microsoft zet aanmelden met gebruikersnaam en wachtwoord (SMTP AUTH met Basic-authenticatie) eind december 2026 standaard uit voor bestaande omgevingen, dus een verzenddienst is de duurzame keuze. Het afzenderadres moet van een domein zijn dat bij de aanbieder is bevestigd met SPF en DKIM.
+
 - De platformbeheerder vult onder Platformbeheer, Instellingen de SMTP-gegevens in van een verzenddienst of hostingpartij en stuurt zichzelf een testmail. Het wachtwoord staat versleuteld in de database (`TOKEN_KEY`). Zonder mailserver verandert er niets: links kopieer je en deelnemers mail je uit je eigen programma.
 - Elke mail staat in `mail_log` (voor de beheerder zichtbaar, zonder de inhoud). Een herinnering heeft een sleutel en gaat daardoor nooit twee keer de deur uit.
 - De dagelijkse taak (`netlify/functions/dagelijks.mts`, 05:30 UTC) stoot de achtergrondfunctie aan; die stuurt de herinneringen voor de vergaderingen van morgen en per persoon één overzicht van acties die vandaag of morgen aflopen. Alleen achterstand wordt één keer per week gemeld, op maandag.
@@ -258,7 +260,7 @@ De film wordt opgenomen door een script dat met fictieve gegevens door de scherm
 1. Start de lokale server met een lege database en `scripts/film/demo.env` als `.env`, en draai de migraties.
 2. `node scripts/film/seed-demo.cjs > demo.json` vult de demogegevens.
 3. `REC=1 node scripts/film/film.cjs uit "$(cat demo.json)"` neemt de beelden op (zonder `REC=1`: alleen schermafbeeldingen, als snelle controle). Het script start zelf een nagebouwde mailserver op poort 2525 voor de scène waarin de agenda wordt gemaild. Elke opname begint met verse demogegevens: stap 1 en 2 opnieuw.
-4. `node scripts/film/montage.cjs uit public/instructiefilm.mp4` maakt de film met ondertitels; `ffmpeg -ss 68 -i public/instructiefilm.mp4 -frames:v 1 -vf scale=1280:-1 -q:v 4 public/instructiefilm.jpg` maakt het stilstaande beeld.
+4. `node scripts/film/montage.cjs uit public/instructiefilm.mp4` maakt de film met ondertitels; `ffmpeg -ss 78 -i public/instructiefilm.mp4 -frames:v 1 -vf scale=1280:-1 -q:v 4 public/instructiefilm.jpg` maakt het stilstaande beeld.
 
 De film staat op de pagina Uitleg (`public/instructiefilm.mp4`) en wordt pas opgehaald als iemand op afspelen klikt. De samenvatting, de voorstellen en het antwoord uit het archief in de film komen uit de lokale testmodus, niet uit het taalmodel.
 
