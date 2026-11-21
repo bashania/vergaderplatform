@@ -53,6 +53,8 @@ const ICONS = {
   right: '<path d="m9 18 6-6-6-6"/>',
   spark: '<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3Z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15Z"/>',
   eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
+  archive: '<rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4"/>',
+  undo: '<path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>',
 } as const;
 
 export type IconName = keyof typeof ICONS;
@@ -219,12 +221,18 @@ export function Form({
   onCancel,
   children,
   extra,
+  danger,
+  disabled,
 }: {
   onSubmit: () => Promise<void>;
   submitLabel?: string;
   onCancel?: () => void;
   children: ReactNode;
   extra?: ReactNode;
+  /** De knop voert iets uit dat niet terug te draaien is: hij krijgt de kleur van een waarschuwing. */
+  danger?: boolean;
+  /** Versturen kan nog niet, bijvoorbeeld omdat een bevestiging ontbreekt. */
+  disabled?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -255,7 +263,7 @@ export function Form({
             Annuleren
           </Button>
         )}
-        <Button type="submit" busy={busy}>
+        <Button type="submit" busy={busy} disabled={disabled} className={danger ? "destructive" : undefined}>
           {busy ? "Bezig…" : submitLabel}
         </Button>
       </div>

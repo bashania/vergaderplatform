@@ -555,12 +555,13 @@ const ACTION_LABEL: Record<string, string> = {
   "POST /api/documents/:id/complete": "Stuk toegevoegd",
   "PATCH /api/documents/:id": "Stuk gewijzigd",
   "DELETE /api/documents/:id": "Stuk verwijderd",
+  "POST /api/overleggen/:id/delete": "Overleg definitief verwijderd",
   "POST /api/account/password": "Eigen wachtwoord gewijzigd",
   "PATCH /api/account": "Eigen naam gewijzigd",
 };
 
 function AuditLog() {
-  const { data, loading, error } = useLoad<{ entries: { id: number; at: string; userName: string; action: string }[] }>("/api/audit");
+  const { data, loading, error } = useLoad<{ entries: { id: number; at: string; userName: string; action: string; detail?: { naam?: string | null; besloten?: boolean } | null }[] }>("/api/audit");
   return (
     <section className="card">
       <div className="card-head">
@@ -583,7 +584,11 @@ function AuditLog() {
                   <tr key={e.id}>
                     <td className="nowrap small">{fmtDateTime(e.at)}</td>
                     <td>{e.userName}</td>
-                    <td>{ACTION_LABEL[e.action] ?? e.action}</td>
+                    <td>
+                      {ACTION_LABEL[e.action] ?? e.action}
+                      {/* Wat is verwijderd, staat nergens anders meer: de naam hoort er dus bij. Van een besloten overleg niet. */}
+                      {e.action === "POST /api/overleggen/:id/delete" && (e.detail?.naam ? `: ${e.detail.naam}` : e.detail?.besloten ? " (besloten overleg)" : "")}
+                    </td>
                   </tr>
                 ))}
               </tbody>

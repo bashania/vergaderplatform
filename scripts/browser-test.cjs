@@ -144,6 +144,26 @@ const inked = (page) =>
   await guest.getByText(/Het meekijken is gestopt/).waitFor({ timeout: 30000 });
   check("beëindigd: de meekijker krijgt de melding dat het meekijken is gestopt", true);
 
+  // Een overleg archiveren en definitief verwijderen, door het scherm heen.
+  const proef = "Proefoverleg opruimen";
+  const made = await secCtx.request.post(`${BASE}/api/overleggen`, { data: { name: proef }, headers: { origin: BASE, "x-organisation": demo.org } });
+  await sec.goto(`${BASE}/overleggen/${(await made.json()).id}`);
+  await sec.getByRole("button", { name: "Archiveren" }).click(); // de bevestiging wordt hierboven automatisch geaccepteerd
+  await sec.getByText("Dit overleg staat in het archief.").waitFor();
+  check("gearchiveerd: balk met uitleg en terugzetten, geen nieuwe vergadering meer", (await sec.getByRole("button", { name: "Terugzetten" }).count()) === 1 && (await sec.getByRole("button", { name: "Nieuwe vergadering" }).count()) === 0);
+  await sec.getByRole("button", { name: "Definitief verwijderen" }).click();
+  const remove = sec.locator("dialog[open]");
+  await remove.getByText("Dit kan niet ongedaan worden gemaakt.").waitFor();
+  const confirm = remove.getByRole("button", { name: "Definitief verwijderen" });
+  await remove.getByRole("textbox").fill("Proefoverleg");
+  check("verwijderen: de knop werkt pas als de naam precies is overgetypt", await confirm.isDisabled());
+  await remove.getByRole("textbox").fill(proef);
+  await confirm.click();
+  await sec.waitForURL(/\/overleggen$/);
+  await sec.getByRole("heading", { name: "Overleggen", exact: true }).waitFor();
+  await sec.getByRole("link", { name: /Bestuursoverleg/ }).first().waitFor();
+  check("verwijderd: terug op de lijst, en het overleg staat er niet meer", (await sec.locator("main").getByRole("link", { name: proef }).count()) === 0);
+
   await browser.close();
   check("geen fouten in de browser", problems.length === 0, problems.join(" | ").slice(0, 600));
   console.log(`\n${ENGINE}: ${failed ? `${failed} mislukt` : "alles geslaagd"}`);

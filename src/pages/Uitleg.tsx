@@ -184,6 +184,22 @@ export default function UitlegPage() {
                 van deze organisatie.
               </p>
             </Topic>
+            <Topic title="Een overleg archiveren of verwijderen">
+              <p>
+                Is een overleg klaar (een projectgroep, een commissie die is opgeheven), <strong>archiveer</strong> het dan: open het overleg en kies
+                Archiveren. Het verdwijnt uit de overzichten en de agenda's en er gaan geen herinneringen meer uit. Alles blijft raadpleegbaar onder
+                Overleggen, bij Gearchiveerd, en met Terugzetten is het weer zoals het was.
+              </p>
+              <p>
+                <strong>Definitief verwijderen</strong> kan alleen vanuit het archief. Je ziet eerst wat er weggaat (vergaderingen, stukken, besluiten,
+                acties) en typt de naam van het overleg over. Daarna is het voor iedereen weg en niet meer terug te halen. Gebruik het voor een proef of
+                een vergissing; een overleg met besluiten die je moet kunnen terugvinden, laat je in het archief staan.
+              </p>
+              <p>
+                Archiveren en verwijderen doet een beheerder van de organisatie. Bij een besloten overleg kan het beheer er niet bij: daar doet de
+                secretaris die zelf deelneemt het. Besloten kringen van een verwijderd overleg blijven bestaan als zelfstandig overleg.
+              </p>
+            </Topic>
             <Topic title="Vertrouwelijke onderwerpen">
               <p>
                 Wie deelneemt aan een overleg, ziet alles van dat overleg. Een beheerder van de organisatie ziet bovendien elk gewoon overleg. Moet een

@@ -1354,6 +1354,76 @@ step("5i. Eigen aantekeningen: alleen zichtbaar voor wie ze schrijft");
   check("aantekeningen staan niet in het logboek", !(await admin.get("/api/audit")).data.entries.some((e) => e.action.includes("my-note")));
 }
 
+step("5j. Overleg archiveren en definitief verwijderen");
+{
+  const merk = `leisteen${RUN}`;
+  const naam = `Proefoverleg ${merk}`;
+  const proef = (await admin.post("/api/overleggen", { name: naam })).data.id;
+  const pia = await addMember(admin, proef, org1, "Pia Proef", `proefpia-${RUN}@test.example`, "secretaris");
+  const dirk = await addMember(admin, proef, org1, "Dirk Proef", `proefdirk-${RUN}@test.example`);
+  const start = new Date(Date.now() + 11 * 86400e3).toISOString();
+  const pm = (await pia.client.post(`/api/overleggen/${proef}/meetings`, { title: `Vergadering ${merk}`, startsAt: start, durationMin: 30 })).data.id;
+  const pi = (await pia.client.post(`/api/meetings/${pm}/items`, { title: `Punt ${merk}`, durationMin: 10 })).data.id;
+  await pia.client.patch(`/api/meetings/${pm}`, { status: "gepubliceerd" });
+  const pd = await pia.client.post(`/api/meetings/${pm}/decisions`, { text: `Besluit ${merk}` });
+  const pa = await pia.client.post(`/api/meetings/${pm}/actions`, { text: `Actie ${merk}`, ownerId: dirk.id, dueDate: "2020-01-15" });
+  const pdoc = await pia.client.upload({ meetingId: pm }, `Stuk ${merk}.txt`, "text/plain", Buffer.from(`inhoud ${merk}`));
+  await dirk.client.put(`/api/items/${pi}/my-note`, { text: `Aantekening ${merk}` });
+  const kring = (await pia.client.post(`/api/overleggen/${proef}/kring`, { name: `Kring ${merk}`, memberIds: [dirk.id] })).data.id;
+  const km = (await pia.client.post(`/api/overleggen/${kring}/meetings`, { title: `Kringvergadering ${merk}`, startsAt: start, durationMin: 30 })).data.id;
+  check("proefoverleg met inhoud en een kring", !!pm && !!pi && pd.status === 200 && pa.status === 200 && pdoc.status === 200 && !!kring && !!km);
+  const path = `/api/overleggen/${proef}`;
+
+  // Wie over het bestaan van een overleg gaat.
+  check("het scherm weet wie mag archiveren: de beheerder wel, de secretaris zonder beheer niet", (await admin.get(path)).data.mayManage === true && (await pia.client.get(path)).data.mayManage === false);
+  check("secretaris zonder beheer kan een open overleg niet archiveren", (await pia.client.patch(path, { archived: true })).status === 403);
+  check("deelnemer kan niet archiveren", (await dirk.client.patch(path, { archived: true })).status === 403);
+  const inhoud = await admin.get(`${path}/contents`);
+  check("de beheerder ziet vooraf wat er onder het overleg hangt", inhoud.status === 200 && inhoud.data.meetings === 1 && inhoud.data.documents === 1 && inhoud.data.decisions === 1 && inhoud.data.actions === 1 && inhoud.data.kringen === 1, JSON.stringify(inhoud.data));
+  check("de secretaris zonder beheer krijgt dat overzicht niet", (await pia.client.get(`${path}/contents`)).status === 403);
+
+  // Eerste slot: verwijderen kan alleen vanuit het archief.
+  const teVroeg = await admin.post(`${path}/delete`, { name: naam });
+  check("verwijderen kan niet zolang het overleg niet is gearchiveerd", teVroeg.status === 409 && /Archiveer/.test(teVroeg.data.error), JSON.stringify(teVroeg));
+
+  // Archiveren: uit de overzichten, wel raadpleegbaar.
+  const dirkZiet = async () => (await Promise.all(["/api/dashboard", "/api/actions", "/api/decisions"].map(async (p) => (await dirk.client.raw("GET", p)).text()))).join("\n");
+  check("voor het archiveren staat de actie in het overzicht van de deelnemer", (await dirkZiet()).includes(`Actie ${merk}`));
+  check("beheerder archiveert het overleg", (await admin.patch(path, { archived: true })).status === 200);
+  check("gearchiveerd: uit het overzicht, de actielijst en de besluitenlijst", !(await dirkZiet()).includes(merk));
+  const lijst = (await dirk.client.get("/api/overleggen")).data.overleggen.find((o) => o.id === proef);
+  check("gearchiveerd: staat nog in de lijst, als gearchiveerd", lijst?.archived === true);
+  check("gearchiveerd: vergadering, stuk en besluiten van het overleg blijven raadpleegbaar", (await dirk.client.get(`/api/meetings/${pm}`)).status === 200 && (await dirk.client.raw("GET", `/api/documents/${pdoc.data.id}/file`)).status === 200 && (await dirk.client.get(`/api/decisions?overleg=${proef}`)).data.decisions.length === 1);
+  const geenNieuwe = await pia.client.post(`${path}/meetings`, { title: "Toch nog een", startsAt: start, durationMin: 30 });
+  check("gearchiveerd: geen nieuwe vergadering", geenNieuwe.status === 409 && /gearchiveerd/.test(geenNieuwe.data.error), JSON.stringify(geenNieuwe));
+  check("terugzetten: de actie staat weer in het overzicht", (await admin.patch(path, { archived: false })).status === 200 && (await dirkZiet()).includes(`Actie ${merk}`));
+  await admin.patch(path, { archived: true });
+
+  // Tweede slot: de naam overtypen. En wie het mag.
+  check("verkeerde naam: niets verwijderd", (await admin.post(`${path}/delete`, { name: "Proefoverleg" })).status === 400 && (await admin.post(`${path}/delete`, {})).status === 400 && (await admin.get(path)).status === 200);
+  check("secretaris zonder beheer en deelnemer kunnen niet verwijderen", (await pia.client.post(`${path}/delete`, { name: naam })).status === 403 && (await dirk.client.post(`${path}/delete`, { name: naam })).status === 403);
+  check("buitenstaander: het overleg bestaat niet", (await bui.client.post(`${path}/delete`, { name: naam })).status === 404 && (await new Client().post(`${path}/delete`, { name: naam })).status === 401);
+
+  const weg = await admin.post(`${path}/delete`, { name: ` ${naam} ` });
+  check("beheerder verwijdert het gearchiveerde overleg met de juiste naam", weg.status === 200 && weg.data.removed.meetings === 1 && weg.data.removed.documents === 1 && weg.data.removed.decisions === 1 && weg.data.removed.actions === 1, JSON.stringify(weg));
+  const gone = await Promise.all([admin.get(path), admin.get(`/api/meetings/${pm}`), admin.raw("GET", `/api/documents/${pdoc.data.id}/file`), dirk.client.get(`/api/meetings/${pm}`), pia.client.get(path)]);
+  check("overleg, vergadering en stuk bestaan niet meer", gone.every((r) => r.status === 404), gone.map((r) => r.status).join());
+  const sporen = (await Promise.all(["/api/overleggen", "/api/dashboard", "/api/actions?status=alle", "/api/decisions", `/api/search?q=${merk}`].map(async (p) => (await admin.raw("GET", p)).text()))).join("\n");
+  check("niets van het overleg staat nog in lijsten, overzicht of zoeken van de beheerder", !sporen.includes(`Besluit ${merk}`) && !sporen.includes(`Actie ${merk}`) && !sporen.includes(naam) && !sporen.includes(`Stuk ${merk}`));
+  check("de eigen aantekening van de deelnemer is mee verwijderd", !(await (await dirk.client.raw("GET", `/api/search?q=${merk}`)).text()).includes(`Aantekening ${merk}`));
+  const regel = (await admin.get("/api/audit")).data.entries.find((e) => e.action === "POST /api/overleggen/:id/delete");
+  check("het logboek zegt welk overleg is verwijderd en wat erin zat", regel?.detail?.naam === naam && regel.detail.vergaderingen === 1 && regel.detail.besluiten === 1, JSON.stringify(regel));
+
+  // De besloten kring blijft bestaan als zelfstandig overleg; het beheer kan er niet bij, de secretaris van de kring wel.
+  const los = await pia.client.get(`/api/overleggen/${kring}`);
+  check("de kring bestaat nog, nu als zelfstandig besloten overleg met zijn vergadering", los.status === 200 && los.data.overleg.besloten === true && los.data.overleg.isKring === false && los.data.parent === null && los.data.meetings.length === 1 && los.data.mayManage === true, JSON.stringify(los.data?.overleg));
+  check("de beheerder kan het besloten overleg niet archiveren of verwijderen", (await admin.patch(`/api/overleggen/${kring}`, { archived: true })).status === 404 && (await admin.post(`/api/overleggen/${kring}/delete`, { name: `Kring ${merk}` })).status === 404);
+  check("een deelnemer van het besloten overleg ook niet", (await dirk.client.patch(`/api/overleggen/${kring}`, { archived: true })).status === 403 && (await dirk.client.get(`/api/overleggen/${kring}`)).data.mayManage === false);
+  check("de secretaris die deelneemt archiveert en verwijdert het besloten overleg", (await pia.client.patch(`/api/overleggen/${kring}`, { archived: true })).status === 200 && (await pia.client.post(`/api/overleggen/${kring}/delete`, { name: `Kring ${merk}` })).status === 200 && (await pia.client.get(`/api/meetings/${km}`)).status === 404);
+  const besloten = (await admin.get("/api/audit")).data.entries.find((e) => e.action === "POST /api/overleggen/:id/delete");
+  check("van een besloten overleg staat de naam niet in het logboek", besloten?.detail?.besloten === true && besloten.detail.naam === null && !JSON.stringify(besloten).includes(merk), JSON.stringify(besloten));
+}
+
 step("6. Afronden, vergrendeling en overnemen");
 let nextMeetingId;
 {

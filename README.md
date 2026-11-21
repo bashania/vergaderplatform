@@ -39,7 +39,7 @@ De korte weg naar een besluit. Agenda's, stukken, besluiten en acties op één p
 | Rol | Bereik | Kan |
 |---|---|---|
 | Platformbeheerder | Hele platform | Organisaties aanmaken, beheerders aanwijzen, accounts blokkeren, resetlinks maken. Ziet de inhoud van een organisatie alleen als beheerder of deelnemer daarvan. |
-| Beheerder | Eén organisatie | Overleggen aanmaken en archiveren, alle overleggen van de organisatie zien en beheren, toegang intrekken. Van een besloten overleg ziet de beheerder alleen dat het bestaat en wie eraan deelneemt. |
+| Beheerder | Eén organisatie | Overleggen aanmaken, archiveren en verwijderen, alle overleggen van de organisatie zien en beheren, toegang intrekken. Van een besloten overleg ziet de beheerder alleen dat het bestaat en wie eraan deelneemt. |
 | Secretaris | Eén overleg | Agenda, notulen, besluiten, acties en deelnemers van dat overleg. |
 | Deelnemer | Eén overleg | Lezen, stukken aanleveren, aanwezigheid doorgeven, eigen acties afmelden. |
 
@@ -107,6 +107,15 @@ De knoppen in de mail openen `/aanwezigheid#<sleutel>~ja` (of `~nee`). De sleute
 ### Stemrondes
 
 Stemrecht hebben de deelnemers van het overleg; een beheerder die niet deelneemt, kijkt mee. De secretaris stelt de uitkomst vast volgens de regels van het overleg (meerderheid, unanimiteit, quorum): het platform telt, maar beslist niet. Een aangenomen voorstel wordt een gewoon besluit bij een vergadering van dat overleg (`server/routes/ballots.ts`).
+
+### Overleg archiveren en verwijderen
+
+- **Archiveren** (`overleggen.archived`) is omkeerbaar: het overleg verdwijnt uit het overzicht, de actielijst, de besluitenlijst, het inzicht en de agenda-abonnementen, en er gaan geen herinneringen meer uit. Alles blijft raadpleegbaar via Overleggen, onder Gearchiveerd, en via zoeken. In een gearchiveerd overleg plan je geen nieuwe vergadering.
+- **Definitief verwijderen** (`POST /api/overleggen/:id/delete`) haalt het overleg weg met alles wat eronder hangt: vergaderingen, agenda's, notulen, stukken (ook de bestanden), besluiten, acties, stemrondes, aangedragen punten en eigen aantekeningen. Er zitten twee sloten op: het overleg moet eerst gearchiveerd zijn, en de naam moet zijn overgetypt. De server controleert beide.
+- **Wie**: een beheerder van de organisatie. Bij een besloten overleg kan het beheer er niet bij; daar is het de secretaris die zelf deelneemt. Een secretaris zonder beheer kan een open overleg dus niet archiveren of verwijderen.
+- **Kringen** van een verwijderd overleg blijven bestaan als zelfstandig besloten overleg (`parent_id` wordt leeg). Ze hebben eigen deelnemers, en wie het overleg verwijdert kan de inhoud van een besloten kring niet zien.
+- **Logboek**: er komt een regel met de naam van het overleg en de aantallen. Van een besloten overleg staat de naam er niet in.
+- **Niet terug te halen** vanuit het platform. Een back-up van vóór het verwijderen bevat het overleg nog, maar terugzetten daarvan zet het hele platform terug.
 
 ### Vertrouwelijke onderwerpen: besloten overleg
 

@@ -3,11 +3,32 @@ import { ACC, accParams, overlegAccess, requireOrgAdmin, requireOrgId, requireOv
 import { activated } from "../auth";
 import { q, q1 } from "../db";
 import { bad, forbidden, HttpError, notFound, oneOf, optStr, str, uuid } from "../http";
+import { deleteDocumentBlobs } from "../files";
 import { findOrInviteUser, reinvite } from "../people";
 import { route } from "../router";
 import { withMail } from "./mail";
 
 const ROLES = ["secretaris", "deelnemer"] as const;
+
+/**
+ * Wie over het bestaan van een overleg gaat (archiveren, terugzetten, verwijderen): het beheer van de
+ * organisatie. Bij een besloten overleg kan het beheer er niet bij; daar is het de secretaris die zelf deelneemt.
+ */
+const mayManage = (a: { besloten: boolean; memberRole: string | null; orgAdmin: boolean }) => (a.besloten ? a.memberRole === "secretaris" : a.orgAdmin);
+const MANAGE_ONLY = "Alleen een beheerder van de organisatie kan dit doen. Bij een besloten overleg is dat de secretaris die zelf deelneemt.";
+
+/** Wat er onder een overleg hangt: voor de bevestiging vóór het verwijderen en voor het logboek. */
+async function contents(overlegId: string) {
+  const row = await q1<{ meetings: number; documents: number; decisions: number; actions: number; kringen: number }>(
+    `SELECT (SELECT count(*)::int FROM meetings WHERE overleg_id = $1) AS meetings,
+            (SELECT count(*)::int FROM documents WHERE overleg_id = $1 AND status = 'ready') AS documents,
+            (SELECT count(*)::int FROM decisions WHERE overleg_id = $1) AS decisions,
+            (SELECT count(*)::int FROM actions WHERE overleg_id = $1) AS actions,
+            (SELECT count(*)::int FROM overleggen WHERE parent_id = $1) AS kringen`,
+    [overlegId],
+  );
+  return row ?? { meetings: 0, documents: 0, decisions: 0, actions: 0, kringen: 0 };
+}
 
 /** Overleggen van de gekozen organisatie waar de gebruiker bij mag. */
 route.get("/api/overleggen", async (c) => {
@@ -127,8 +148,54 @@ route.get("/api/overleggen/:id", async (c) => {
       [id],
     ),
   ]);
-  return { overleg, role: access.role, memberRole: access.memberRole, orgAdmin: access.orgAdmin, parent, kringen, members, meetings, documents };
+  return { overleg, role: access.role, memberRole: access.memberRole, orgAdmin: access.orgAdmin, mayManage: mayManage(access), parent, kringen, members, meetings, documents };
 });
+
+route.get("/api/overleggen/:id/contents", async (c) => {
+  const id = uuid(c.params.id, "Overleg");
+  const access = await overlegAccess(c.user, id);
+  if (!access?.role) throw notFound("Overleg niet gevonden.");
+  if (!mayManage(access)) throw forbidden(MANAGE_ONLY);
+  return contents(id);
+});
+
+/**
+ * Een overleg definitief verwijderen, met alles wat eronder hangt: vergaderingen, agenda's, stukken,
+ * notulen, besluiten, acties, stemrondes, aangedragen punten en eigen aantekeningen. Dat is niet terug te
+ * draaien, dus er zitten twee sloten op: het overleg moet eerst gearchiveerd zijn, en de naam moet zijn
+ * overgetypt. Kringen van het overleg blijven bestaan als zelfstandig overleg: ze hebben eigen deelnemers,
+ * en bij een besloten kring kan wie hier verwijdert de inhoud niet eens zien.
+ */
+route.post(
+  "/api/overleggen/:id/delete",
+  async (c) => {
+    const id = uuid(c.params.id, "Overleg");
+    const access = await overlegAccess(c.user, id);
+    if (!access?.role) throw notFound("Overleg niet gevonden.");
+    if (!mayManage(access)) throw forbidden(MANAGE_ONLY);
+    const overleg = await q1<{ name: string; archived: boolean }>(`SELECT name, archived FROM overleggen WHERE id = $1`, [id]);
+    if (!overleg) throw notFound("Overleg niet gevonden.");
+    if (!overleg.archived) throw new HttpError(409, "Archiveer het overleg eerst. Verwijderen kan alleen vanuit het archief.");
+    const typed = optStr((await c.body()).name, "Naam", 200).trim();
+    if (typed !== overleg.name.trim()) throw bad("Typ de naam van het overleg precies over om het verwijderen te bevestigen.");
+
+    const removed = await contents(id);
+    // Eerst de bestanden, dan de gegevens: gaat er onderweg iets mis, dan staat het overleg er nog en kan het opnieuw.
+    const docs = await q<{ id: string }>(`SELECT id FROM documents WHERE overleg_id = $1`, [id]);
+    for (let i = 0; i < docs.length; i += 8) await Promise.all(docs.slice(i, i + 8).map((d) => deleteDocumentBlobs(d.id)));
+    await q(`DELETE FROM overleggen WHERE id = $1`, [id]);
+    // Eigen regel in het logboek, met de naam: het nummer alleen zegt na het verwijderen niets meer. Van een
+    // besloten overleg komt de naam er niet in: het logboek is er ook voor wie niet aan dat overleg deelnam.
+    await q(`INSERT INTO audit_log (user_id, user_name, action, detail) VALUES ($1, $2, $3, $4::jsonb)`, [
+      c.user.id,
+      c.user.name,
+      "POST /api/overleggen/:id/delete",
+      JSON.stringify({ id, naam: access.besloten ? null : overleg.name, besloten: access.besloten, vergaderingen: removed.meetings, stukken: removed.documents, besluiten: removed.decisions, acties: removed.actions }),
+    ]);
+    return { ok: true, removed };
+  },
+  { audit: false },
+);
 
 route.patch("/api/overleggen/:id", async (c) => {
   const id = uuid(c.params.id, "Overleg");
@@ -145,7 +212,7 @@ route.patch("/api/overleggen/:id", async (c) => {
   if (b.name !== undefined) set("name", str(b.name, "Naam", { max: 120 }));
   if (b.description !== undefined) set("description", optStr(b.description, "Omschrijving", 1000));
   if (b.archived !== undefined) {
-    if (!access.orgAdmin) throw forbidden("Alleen een beheerder van de organisatie kan een overleg archiveren.");
+    if (!mayManage(access)) throw forbidden(MANAGE_ONLY);
     set("archived", b.archived === true);
   }
   if (b.besloten !== undefined && (b.besloten === true) !== access.besloten) {
