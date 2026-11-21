@@ -26,7 +26,7 @@ const TABLES: Table[] = [
   { name: "overleggen", order: "(parent_id IS NOT NULL), id", page: 300 },
   { name: "memberships", order: "overleg_id, user_id", page: 500 },
   // De stand van de vergadermodus verwijst naar een agendapunt en gaat niet mee: na terugzetten loopt er geen vergadering.
-  { name: "meetings", order: "id", page: 100, strip: ["live_started_at", "live_item_id", "live_item_started_at"] },
+  { name: "meetings", order: "id", page: 100, strip: ["live_started_at", "live_item_id", "live_item_started_at", "live_doc_id", "live_doc_page", "watch_token", "watch_code", "watch_until"] },
   // Hoofdpunten vóór hun subpunten.
   { name: "agenda_items", order: "(parent_id IS NOT NULL), id", page: 50 },
   { name: "documents", order: "id", page: 300, where: "status = 'ready'" },

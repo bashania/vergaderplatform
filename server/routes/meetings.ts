@@ -182,7 +182,9 @@ const CLOSE_ITEM = `closed AS (
    WHERE mt.id = $1 AND i.id = mt.live_item_id AND mt.live_item_started_at IS NOT NULL
 )`;
 const STOP_LIVE = `WITH ${CLOSE_ITEM}
-  UPDATE meetings SET live_started_at = NULL, live_item_id = NULL, live_item_started_at = NULL WHERE id = $1`;
+  UPDATE meetings SET live_started_at = NULL, live_item_id = NULL, live_item_started_at = NULL,
+                      live_doc_id = NULL, live_doc_page = NULL, watch_token = NULL, watch_code = NULL, watch_until = NULL
+   WHERE id = $1`;
 
 /**
  * Stand van de vergadermodus. `version` verandert zodra er iets aan agenda, notulen, besluiten,
@@ -191,6 +193,7 @@ const STOP_LIVE = `WITH ${CLOSE_ITEM}
 function liveState(meetingId: string) {
   return q1(
     `SELECT mt.status, mt.live_started_at, mt.live_item_id, mt.live_item_started_at, now() AS now,
+            mt.live_doc_id, mt.live_doc_page, (mt.watch_token IS NOT NULL AND mt.watch_until > now()) AS watch_on,
             md5(concat_ws('|', mt.updated_at::text, mt.status,
               coalesce(mt.live_item_id::text, '-'), coalesce(mt.live_started_at::text, '-'),
               (SELECT md5(coalesce(string_agg(i::text, '|' ORDER BY i.id), '')) FROM agenda_items i WHERE i.meeting_id = mt.id),
@@ -219,9 +222,25 @@ route.post(
       throw new HttpError(409, "Publiceer de vergadering eerst. Daarna kun je de vergadermodus starten.");
     }
     const b = await c.body();
-    const action = oneOf(b.action, "Actie", ["start", "goto", "stop"] as const);
+    const action = oneOf(b.action, "Actie", ["start", "goto", "stop", "show", "page", "hide"] as const);
     if (action === "stop") {
       await q(STOP_LIVE, [id]);
+      return liveState(id);
+    }
+    // Een stuk op het scherm zetten, bladeren, of het stuk weer weghalen. Wie meeloopt, ziet hetzelfde.
+    if (action === "show" || action === "page" || action === "hide") {
+      if (!meeting.liveStartedAt) throw new HttpError(409, "Start eerst de vergadermodus.");
+      if (action === "hide") {
+        await q(`UPDATE meetings SET live_doc_id = NULL, live_doc_page = NULL WHERE id = $1`, [id]);
+      } else if (action === "show") {
+        const docId = uuid(b.docId, "Stuk");
+        if (!(await q1(`SELECT 1 AS x FROM documents WHERE id = $1 AND meeting_id = $2 AND status = 'ready'`, [docId, id]))) {
+          throw bad("Het stuk hoort niet bij deze vergadering.");
+        }
+        await q(`UPDATE meetings SET live_doc_id = $2, live_doc_page = $3 WHERE id = $1`, [id, docId, int(b.page ?? 1, "Pagina", 1, 5000)]);
+      } else {
+        await q(`UPDATE meetings SET live_doc_page = $2 WHERE id = $1 AND live_doc_id IS NOT NULL`, [id, int(b.page, "Pagina", 1, 5000)]);
+      }
       return liveState(id);
     }
     let itemId = optUuid(b.itemId, "Agendapunt");
@@ -243,7 +262,8 @@ route.post(
     if (itemId !== meeting.liveItemId) {
       await q(
         `WITH ${CLOSE_ITEM}
-         UPDATE meetings SET live_started_at = COALESCE(live_started_at, now()), live_item_id = $2, live_item_started_at = now()
+         UPDATE meetings SET live_started_at = COALESCE(live_started_at, now()), live_item_id = $2, live_item_started_at = now(),
+                             live_doc_id = NULL, live_doc_page = NULL
           WHERE id = $1`,
         [id, itemId],
       );

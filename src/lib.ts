@@ -155,6 +155,11 @@ export type LiveState = {
   liveStartedAt: string | null;
   liveItemId: string | null;
   liveItemStartedAt: string | null;
+  /** Het stuk dat de secretaris op het scherm heeft gezet, met de pagina waar hij is. */
+  liveDocId: string | null;
+  liveDocPage: number | null;
+  /** Meekijken zonder account staat aan voor deze vergadering. */
+  watchOn: boolean;
   now: string;
   version: string;
 };

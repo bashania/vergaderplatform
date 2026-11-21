@@ -1,10 +1,10 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { api, canOpenDirect, downloadInParts, errorText, fileUrl, uploadFile, type UploadTarget } from "../api";
 import { fileExt, fmtDate, fmtSize, type Doc } from "../lib";
 import { Button, Icon, useRun, useToast } from "../ui";
 import { canSummarize, SummaryModal, useAi } from "./Ai";
 
-function DocRow({ doc, canManage, onChanged }: { doc: Doc; canManage: boolean; onChanged: () => void }) {
+function DocRow({ doc, canManage, onChanged, extra }: { doc: Doc; canManage: boolean; onChanged: () => void; extra?: ReactNode }) {
   const run = useRun();
   const toast = useToast();
   const [progress, setProgress] = useState<number | null>(null);
@@ -49,6 +49,7 @@ function DocRow({ doc, canManage, onChanged }: { doc: Doc; canManage: boolean; o
           </div>
         )}
       </div>
+      {extra}
       {showSummary && (
         <Button variant="ghost" small icon="spark" className="no-print" title="Samenvatting door de AI-assistent" aria-label="Samenvatting" onClick={() => setSummary(true)}>
           <span className="doc-label">Samenvatting</span>
@@ -79,12 +80,23 @@ function DocRow({ doc, canManage, onChanged }: { doc: Doc; canManage: boolean; o
   );
 }
 
-export function DocList({ docs, canManage, onChanged }: { docs: Doc[]; canManage: (d: Doc) => boolean; onChanged: () => void }) {
+export function DocList({
+  docs,
+  canManage,
+  onChanged,
+  extra,
+}: {
+  docs: Doc[];
+  canManage: (d: Doc) => boolean;
+  onChanged: () => void;
+  /** Een extra knop per stuk, bijvoorbeeld "Op het scherm" in de vergadermodus. */
+  extra?: (d: Doc) => ReactNode;
+}) {
   if (!docs.length) return null;
   return (
     <div>
       {docs.map((d) => (
-        <DocRow key={d.id} doc={d} canManage={canManage(d)} onChanged={onChanged} />
+        <DocRow key={d.id} doc={d} canManage={canManage(d)} onChanged={onChanged} extra={extra?.(d)} />
       ))}
     </div>
   );
