@@ -3,6 +3,7 @@ import { store } from "../files";
 import { smtpSettings, verifySmtp } from "../mail";
 import { plaudAvailable, plaudReachable } from "../plaud";
 import { route } from "../router";
+import { dataLocation } from "./admin";
 import { aiSelfTest } from "./ai";
 
 /**
@@ -11,7 +12,7 @@ import { aiSelfTest } from "./ai";
  * herinneringen het doen.
  */
 
-type Check = { key: string; label: string; status: "ok" | "fout" | "uit"; detail: string };
+type Check = { key: string; label: string; status: "ok" | "fout" | "uit" | "let_op"; detail: string };
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e)).slice(0, 300);
 
@@ -69,7 +70,7 @@ route.post(
           detail: `Plaud is bereikbaar en biedt koppelen aan. ${linked?.n ?? 0} ${linked?.n === 1 ? "gebruiker heeft" : "gebruikers hebben"} gekoppeld.`,
         });
       } catch (e) {
-        checks.push({ key: "plaud", label: "Koppeling met Plaud", status: "fout", detail: message(e) });
+        checks.push({ key: "plaud", label: "Koppeling met Plaud", status: "fout", detail: `Plaud is niet bereikbaar of biedt koppelen niet aan (${message(e)}).` });
       }
     }
 
@@ -91,6 +92,16 @@ route.post(
         age === null
           ? "Nog niet gelopen sinds deze versie. De taak loopt elke ochtend rond half zeven; kijk morgen opnieuw."
           : `Laatst gelopen op ${when}: ${run.result ?? "geen uitkomst"}.${age >= 26 ? " Dat is langer dan een dag geleden: de taak loopt niet." : ""}`,
+    });
+
+    const where = dataLocation(c.serverRegion);
+    checks.push({
+      key: "locatie",
+      label: "Locatie van de gegevens",
+      status: where.binnenEu ? "ok" : "let_op",
+      detail: `Functies: ${where.functies}. Database: ${where.database}. Stukken: ${where.stukken}.${
+        where.binnenEu ? " Alles binnen de EU." : " Niet alles staat binnen de EU. De regio van de functies en de database stel je in bij Netlify (Cloud compute, Functions, Region); verhuizen kan met een back-up."
+      }`,
     });
 
     return { checks, at: new Date().toISOString() };

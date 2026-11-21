@@ -18,6 +18,7 @@ import "../../server/routes/insights";
 import "../../server/routes/rsvp";
 import "../../server/routes/ballots";
 import "../../server/routes/system";
+import "../../server/routes/backup";
 
 // Eén functie voor de hele API: gedeelde code, één koude start.
 export default (req: Request, context: Context) => handle(req, context);

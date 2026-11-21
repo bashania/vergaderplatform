@@ -1,9 +1,58 @@
 import { useState } from "react";
 import { api, errorText } from "../api";
+import { downloadBackup } from "../backup";
 import { fmtDateTime } from "../lib";
-import { Button, useRun } from "../ui";
+import { Button, useRun, useToast } from "../ui";
 
-type Check = { key: string; label: string; status: "ok" | "fout" | "uit"; detail: string };
+/** Platformbeheer: alle gegevens als één bestand downloaden, om te bewaren of om mee te verhuizen. */
+export function BackupCard() {
+  const toast = useToast();
+  const [progress, setProgress] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  return (
+    <section className="card">
+      <div className="card-head">
+        <h2 className="section-title">Back-up</h2>
+        <Button
+          small
+          variant="secondary"
+          icon="download"
+          busy={progress !== null}
+          onClick={async () => {
+            setError("");
+            setProgress("Voorbereiden…");
+            try {
+              const rows = await downloadBackup((done, total) => setProgress(`${done} van ${total}`));
+              toast(`Back-up gedownload (${rows.toLocaleString("nl-NL")} regels)`);
+            } catch (e) {
+              setError(errorText(e));
+            }
+            setProgress(null);
+          }}
+        >
+          {progress ?? "Back-up downloaden"}
+        </Button>
+      </div>
+      <div className="card-body stack">
+        <p>
+          Eén bestand met alle gegevens: organisaties, overleggen, vergaderingen, notulen, besluiten, acties, stemrondes en accounts. Je zet het terug op een
+          leeg platform, bijvoorbeeld bij een verhuizing naar een andere regio of na verlies van gegevens.
+        </p>
+        <p className="small muted">
+          Bewaar het bestand op een veilige plek: het bevat alles wat in het platform staat, waaronder transcripten en de (versleutelde) inloggegevens van
+          accounts. De bestanden van stukken zitten er niet in; die blijven in de opslag van het platform staan.
+        </p>
+        {error && (
+          <div className="form-error" role="alert">
+            {error}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+type Check = { key: string; label: string; status: "ok" | "fout" | "uit" | "let_op"; detail: string };
 
 /** Platformbeheer: één knop die elk onderdeel echt aanspreekt en zegt of het werkt. */
 export function SystemCheckCard() {
@@ -21,6 +70,7 @@ export function SystemCheckCard() {
   }
 
   const wrong = state.checks?.filter((c) => c.status === "fout").length ?? 0;
+  const attention = state.checks?.filter((c) => c.status === "let_op").length ?? 0;
   return (
     <section className="card">
       <div className="card-head">
@@ -43,15 +93,18 @@ export function SystemCheckCard() {
         )}
         {state.checks && (
           <>
-            <div className={`notice ${wrong ? "warm" : "accent"}`}>
-              <strong>{wrong ? `${wrong} ${wrong === 1 ? "onderdeel werkt" : "onderdelen werken"} niet.` : "Alles wat is ingericht, werkt."}</strong>
+            <div className={`notice ${wrong || attention ? "warm" : "accent"}`}>
+              <strong>
+                {wrong ? `${wrong} ${wrong === 1 ? "onderdeel werkt" : "onderdelen werken"} niet.` : "Alles wat is ingericht, werkt."}
+                {attention ? ` ${attention} ${attention === 1 ? "punt vraagt" : "punten vragen"} je aandacht.` : ""}
+              </strong>
               {state.at ? ` Gecontroleerd op ${fmtDateTime(state.at)}.` : ""}
             </div>
             <ul className="list" style={{ margin: 0 }}>
               {state.checks.map((c) => (
                 <li key={c.key} style={{ paddingLeft: 0, paddingRight: 0, alignItems: "flex-start" }}>
-                  <span className={`badge ${c.status === "ok" ? "accent" : c.status === "fout" ? "warm" : ""}`} style={{ marginTop: 3, minWidth: 92, justifyContent: "center" }}>
-                    {c.status === "ok" ? "Werkt" : c.status === "fout" ? "Werkt niet" : "Niet actief"}
+                  <span className={`badge ${c.status === "ok" ? "accent" : c.status === "uit" ? "" : "warm"}`} style={{ marginTop: 3, minWidth: 92, justifyContent: "center" }}>
+                    {c.status === "ok" ? "In orde" : c.status === "fout" ? "Werkt niet" : c.status === "let_op" ? "Let op" : "Niet actief"}
                   </span>
                   <div className="grow">
                     <strong>{c.label}</strong>

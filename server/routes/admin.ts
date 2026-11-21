@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { aiAvailable } from "../ai";
 import { activated, createUserToken } from "../auth";
-import { dbHost, q, q1 } from "../db";
+import { dbHost, dbRegion, q, q1 } from "../db";
 import { bad, email, env, HttpError, json, notFound, optStr, str, uuid } from "../http";
 import { store } from "../files";
 import { plaudAvailable } from "../plaud";
@@ -13,9 +13,18 @@ import { withMail } from "./mail";
  * de datatypes die de app gebruikt) en is de opslag van stukken bereikbaar?
  * Schrijft niets en geeft geen gegevens prijs.
  */
+/** Regio van de functies, de database en de stukken, en of dat binnen de EU is. */
+export function dataLocation(serverRegion: string) {
+  const functies = serverRegion;
+  const database = dbRegion();
+  const stukken = env("BLOB_REGION") ?? "eu-central-1";
+  const eu = (r: string) => r.startsWith("eu-") || ["fra", "dub", "cdg", "mxp", "lokaal", "dev"].includes(r);
+  return { functies, database, stukken, binnenEu: eu(functies) && eu(database) && eu(stukken) };
+}
+
 route.get(
   "/api/health",
-  async () => {
+  async (c) => {
     const ids = [randomUUID(), randomUUID()];
     let dbOk = false;
     let blobsOk = false;
@@ -52,6 +61,8 @@ route.get(
       ai: aiAvailable() ? "beschikbaar" : "niet beschikbaar",
       // Alleen of de versleutelingssleutel voor de koppeling aanwezig is; koppelen zelf doet elke gebruiker.
       plaud: plaudAvailable() ? "beschikbaar" : "niet ingericht",
+      // Waar de gegevens staan en worden verwerkt (alleen de regio, geen adressen).
+      regio: dataLocation(c.serverRegion),
     };
     return dbOk && blobsOk ? body : json(body, 503);
   },

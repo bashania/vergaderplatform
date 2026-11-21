@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, errorText } from "../api";
 import { useAuth } from "../auth";
+import { restoreBackup } from "../backup";
 import { PasskeyButton } from "../components/PasskeyButton";
 import { acceptInviteWithPasskey, deviceName, loginWithPasskey, passkeysSupported } from "../passkeys";
 import { Brand, Button, Field, Form } from "../ui";
@@ -113,6 +114,37 @@ export function SetupPage() {
   const [email, setEmail] = useState("");
   const [orgName, setOrgName] = useState("");
   const [pw, setPw] = useState<[string, string]>(["", ""]);
+  const [restoring, setRestoring] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const [progress, setProgress] = useState("");
+  if (restoring) {
+    return (
+      <AuthShell title="Back-up terugzetten" lead="Zet de gegevens van een eerder platform terug. Daarna log je in met je bestaande account.">
+        <Form
+          submitLabel="Terugzetten"
+          onCancel={() => setRestoring(false)}
+          onSubmit={async () => {
+            if (!file) throw new Error("Kies eerst het back-upbestand.");
+            const result = await restoreBackup(file, code, (done, total) => setProgress(`${done} van ${total} regels teruggezet`));
+            setProgress(`Klaar: ${result.users} accounts, ${result.organisations} organisaties en ${result.meetings} vergaderingen teruggezet.`);
+            await refresh();
+            navigate("/", { replace: true });
+          }}
+        >
+          {!fromLink && (
+            <Field label="Installatiecode" hint="De code die je bij de oplevering hebt gekregen.">
+              <input className="input" required value={code} onChange={(e) => setCode(e.target.value)} />
+            </Field>
+          )}
+          <Field label="Back-upbestand" hint="Het bestand dat je onder Platformbeheer, Instellingen hebt gedownload.">
+            <input className="input" type="file" accept=".json,application/json" required onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          </Field>
+          {progress && <p className="small muted">{progress}</p>}
+          <p className="small muted">De bestanden van stukken zitten niet in de back-up. Op hetzelfde Netlify-project blijven ze gewoon beschikbaar.</p>
+        </Form>
+      </AuthShell>
+    );
+  }
   return (
     <AuthShell title="Platform inrichten" lead="Maak het eerste beheerdersaccount aan. Daarna nodig je de andere deelnemers uit.">
       <Form
@@ -143,6 +175,9 @@ export function SetupPage() {
           <input className="input" required maxLength={120} autoComplete="organization" value={orgName} onChange={(e) => setOrgName(e.target.value)} />
         </Field>
       </Form>
+      <Button variant="ghost" onClick={() => setRestoring(true)}>
+        Ik heb een back-up en wil die terugzetten
+      </Button>
     </AuthShell>
   );
 }

@@ -1,6 +1,7 @@
 // End-to-end test van de API. Draait tegen een lege (of eerder door dit script gevulde) database.
 //   BASE=http://localhost:8888 SETUP_CODE=lokale-testcode node scripts/e2e.mjs
 import { createHash, randomBytes } from "node:crypto";
+import { writeFileSync } from "node:fs";
 import { simpleParser } from "mailparser";
 import { SMTPServer } from "smtp-server";
 import { startFakePlaud } from "./fake-plaud.mjs";
@@ -1102,6 +1103,47 @@ step("7. Zoeken, dashboard, beheer");
   check("uitloggen", (await fresh.post("/api/logout")).status === 200);
   check("na uitloggen 401", (await fresh.get("/api/overleggen")).status === 401);
   check("onbekende route 404", (await admin.get("/api/bestaat-niet")).status === 404);
+}
+
+step("7b. Back-up en locatie van de gegevens");
+{
+  const health = await new Client().get("/api/health");
+  check("health meldt waar de gegevens staan", health.status === 200 && typeof health.data.regio?.functies === "string" && health.data.regio.stukken === "eu-central-1" && typeof health.data.regio.binnenEu === "boolean", JSON.stringify(health.data));
+  const location = (await admin.post("/api/admin/system/check")).data.checks.find((x) => x.key === "locatie");
+  check("systeemcontrole toont de locatie", !!location && location.detail.includes("Database:") && ["ok", "let_op"].includes(location.status), JSON.stringify(location));
+
+  const notAdmin = await sec.client.post("/api/admin/backup", { table: "users" });
+  check("back-up alleen voor de platformbeheerder", (await new Client().get("/api/admin/backup")).status === 401 && [401, 403].includes(notAdmin.status) && !notAdmin.data?.rows, `${notAdmin.status}`);
+  const plan = await admin.get("/api/admin/backup");
+  check("overzicht van de back-up", plan.status === 200 && plan.data.format === "vergaderplatform-backup" && plan.data.tables[0].name === "users" && plan.data.tables.some((t) => t.name === "transcripts"), JSON.stringify(plan.data).slice(0, 200));
+  check("onbekende tabel geweigerd", (await admin.post("/api/admin/backup", { table: "sessions" })).status === 400);
+  const backup = { format: plan.data.format, version: plan.data.version, exportedAt: new Date().toISOString(), tables: {} };
+  for (const t of plan.data.tables) {
+    const rows = [];
+    let offset = 0;
+    while (offset !== null) {
+      const part = await admin.post("/api/admin/backup", { table: t.name, offset });
+      if (part.status !== 200) throw new Error(`back-up van ${t.name}: ${part.status} ${JSON.stringify(part.data)}`);
+      rows.push(...part.data.rows);
+      offset = part.data.next;
+    }
+    backup.tables[t.name] = rows;
+  }
+  check("elke tabel compleet opgehaald", plan.data.tables.every((t) => backup.tables[t.name].length === t.rows), plan.data.tables.map((t) => `${t.name}:${t.rows}/${backup.tables[t.name].length}`).join(" "));
+  const me = backup.tables.users.find((u) => u.email === adminCreds.email);
+  check("rijen staan er zoals de database ze kent", !!me && typeof me.password_hash === "string" && me.is_admin === true && !("passwordHash" in me));
+  check("stand van de vergadermodus gaat niet mee", backup.tables.meetings.length > 0 && backup.tables.meetings.every((m) => !("live_item_id" in m)));
+  check("hoofdpunten staan vóór hun subpunten", (() => {
+    const seen = new Set();
+    return backup.tables.agenda_items.every((i) => (seen.add(i.id), !i.parent_id || seen.has(i.parent_id)));
+  })());
+  check("terugzetten op een platform in gebruik geweigerd", (await new Client().post("/api/setup/restore", { code: SETUP_CODE, step: "start", format: backup.format, version: 1 })).status === 409);
+  check("terugzetten zonder de juiste code geweigerd", (await new Client().post("/api/setup/restore", { code: "fout", step: "start", format: backup.format, version: 1 })).status === 403);
+  check("back-up staat in het logboek", (await admin.post("/api/admin/backup/done")).status === 200 && (await admin.get("/api/audit")).data.entries.some((e) => e.action === "POST /api/admin/backup/done"));
+  if (process.env.BACKUP_OUT) {
+    writeFileSync(process.env.BACKUP_OUT, JSON.stringify(backup));
+    console.log(`  back-up geschreven naar ${process.env.BACKUP_OUT} (${Object.values(backup.tables).reduce((n, r) => n + r.length, 0)} regels)`);
+  }
 }
 
 if (process.env.CLEANUP === "1") {

@@ -172,7 +172,10 @@ export default function UitlegPage() {
                   testmail. Daarna verstuurt het platform uitnodigingen, agenda's, verslagen en herinneringen. Zonder mailserver blijft alles werken; links
                   kopieer je dan zelf.
                 </p>
-                <p>Met de Systeemcontrole op dezelfde pagina zie je in één keer of de database, de AI-assistent, de mailserver, Plaud en de dagelijkse herinneringen werken.</p>
+                <p>
+                  Met de Systeemcontrole op dezelfde pagina zie je in één keer of de database, de AI-assistent, de mailserver, Plaud en de dagelijkse
+                  herinneringen werken, en in welke regio de gegevens staan. Met Back-up download je alle gegevens als één bestand.
+                </p>
               </Topic>
             )}
           </div>
