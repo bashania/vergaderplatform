@@ -36,3 +36,48 @@ jobs:
       - name: Logboek van de server
         if: failure()
         run: tail -n 200 dev.log
+
+  # De schermen in drie browsers: het stuk op het scherm, het presentatiescherm en meekijken zonder
+  # account, met drie schermen tegelijk. WebKit is de browsermotor van Safari.
+  browser:
+    name: Schermen in ${{ matrix.browser }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit, firefox]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Bouwen
+        run: npm run build
+      - name: Browsers voor de test
+        # Chromium is ook nodig voor de demogegevens: het maakt de pdf's waar de test mee werkt.
+        run: |
+          npm install --no-save playwright@1.63.0
+          npx playwright install --with-deps chromium ${{ matrix.browser }}
+      - name: Lokale server met lege database
+        run: scripts/start-test-server.sh
+      - name: Demogegevens
+        run: node scripts/film/seed-demo.cjs > demo.json
+      - name: Stuk op het scherm, presentatiescherm en meekijken
+        run: node scripts/browser-test.cjs demo.json
+        env:
+          BROWSER: ${{ matrix.browser }}
+          OUT: schermafbeeldingen
+      - name: Schermafbeeldingen bewaren
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: schermafbeeldingen-${{ matrix.browser }}
+          path: schermafbeeldingen
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Logboek van de server
+        if: failure()
+        run: tail -n 200 dev.log
