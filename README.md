@@ -1,6 +1,6 @@
-# Vergaderplatform
+# Kortweg
 
-Agenda's, stukken, besluiten en acties op één plek, zodat alle deelnemers altijd bij de stukken kunnen. Eén platform voor meerdere organisaties: elke organisatie is een eigen omgeving.
+De korte weg naar een besluit. Agenda's, stukken, besluiten en acties op één plek, zodat alle deelnemers altijd bij de stukken kunnen. Eén platform voor meerdere organisaties: elke organisatie is een eigen omgeving.
 
 ## Wat het doet
 
@@ -169,6 +169,22 @@ Grote bibliotheken (taalmodel, MCP, mail, passkeys) worden pas geladen bij het e
 - **Waar de gegevens langs gaan**: de opname en het transcript staan bij Plaud; het ophalen loopt via Plaud's MCP-server in de VS; het maken van concept-notulen stuurt het transcript naar het taalmodel (zie AI-assistent). Informeer deelnemers vooraf dat de vergadering wordt opgenomen.
 
 Zonder ingestelde mailserver verstuurt het platform zelf geen e-mail: uitnodigingslinks kopieert of mailt de secretaris of beheerder dan zelf. Resetlinks (wachtwoord vergeten) maakt alleen de platformbeheerder.
+
+## Huisstijl
+
+Het product heet Kortweg. De huisstijl is vastgelegd in het Kortweg Design System (buiten deze repo). Hieronder staat wat je in de code nodig hebt.
+
+- **Eén regel: kleur is een vlak, tekst is inkt.** Citroen (`--brand`) staat alleen als vlak met inkt erop: de hoofdknop, de actieve menuregel, het besluitnummer en het inlogscherm. Tekst op wit is nooit geel.
+- **Kleuren en maten** staan als variabelen bovenin `src/styles.css`. De namen zijn die van vóór de huisstijl (`--accent` is nu inkt), zodat bestaande regels blijven werken.
+- **Letters:** Gabarito voor de naam en de koppen, Figtree om te lezen, IBM Plex Mono voor besluitnummers. Ze worden meegeleverd (`@fontsource`); er wordt niets van buiten geladen.
+- **Vorm:** knoppen en labels zijn pillen, kaarten hebben ronde hoeken, een actie tik je dicht in een rondje. Geen schaduwen, geen verlopen.
+- **E-mail:** de opmaak staat met vaste kleuren in `server/mail.ts`, omdat e-mailprogramma's geen variabelen en geen eigen letters laden.
+- **Schrijven:** kort, in de je-vorm. Een samenvatting mag openen met "Kortweg:", hooguit één keer per scherm of e-mail.
+- **Instructiefilm:** `public/instructiefilm.mp4` is nog opgenomen in de oude vormgeving. Het script kent de nieuwe kleuren al; neem de film opnieuw op (zie verderop).
+
+### Naam wijzigen
+
+De naam staat in de code op één plek: `shared/brand.ts`. Daarnaast staat hij in bestanden die geen code kunnen inlezen: `index.html` (titel), `public/manifest.webmanifest`, de iconen in `public/` en de titelkaart in `scripts/film/film.cjs`. Passkeys blijven werken bij een andere naam: die hangen aan het webadres (`RP_ID`), niet aan de naam.
 
 ## Lokaal draaien
 

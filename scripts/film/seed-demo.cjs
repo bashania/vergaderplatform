@@ -40,10 +40,10 @@ async function upload(target, name, bytes) {
 }
 
 const page = (title, body) => `<!doctype html><html lang="nl"><meta charset="utf-8"><style>
-  body { font: 11.5pt/1.6 Inter, "DejaVu Sans", sans-serif; color: #13283b; margin: 0; }
+  body { font: 11.5pt/1.6 Inter, "DejaVu Sans", sans-serif; color: #18181b; margin: 0; }
   h1 { font-size: 20pt; margin: 0 0 4pt; } h2 { font-size: 12.5pt; margin: 18pt 0 4pt; }
-  .sub { color: #5a6b7d; margin-bottom: 14pt; } table { border-collapse: collapse; width: 100%; }
-  td, th { text-align: left; padding: 5pt 8pt; border-bottom: 1px solid #e1e7ec; } td:last-child, th:last-child { text-align: right; }
+  .sub { color: #6f6c64; margin-bottom: 14pt; } table { border-collapse: collapse; width: 100%; }
+  td, th { text-align: left; padding: 5pt 8pt; border-bottom: 1px solid #e8e5db; } td:last-child, th:last-child { text-align: right; }
 </style><h1>${title}</h1>${body}</html>`;
 
 // Drie pagina's, zodat de film kan laten zien hoe je door een stuk bladert.
@@ -64,7 +64,7 @@ const GROENPLAN = page(
     <circle cx="390" cy="315" r="34" fill="#7cc08a" stroke="#2f7a43"/><text x="390" y="320" text-anchor="middle" font-size="13" fill="#103d1c">Boom</text>
     <rect x="470" y="270" width="120" height="90" rx="10" fill="#f6dfb3" stroke="#c9963a"/><text x="530" y="320" text-anchor="middle" font-size="15" fill="#6b4a12">Zitplek</text>
     <path d="M320 400 V210 H250" fill="none" stroke="#8a97a5" stroke-width="10" stroke-linecap="round" stroke-dasharray="2 16"/>
-    <text x="320" y="392" text-anchor="middle" font-size="12" fill="#5a6b7d">Ingang</text>
+    <text x="320" y="392" text-anchor="middle" font-size="12" fill="#6f6c64">Ingang</text>
   </svg>
   <div style="page-break-before: always"></div>
   <h1>Kosten en planning</h1><div class="sub">Bedragen inclusief btw.</div>

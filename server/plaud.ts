@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { q, q1 } from "./db";
 import { currentDeployContext } from "./files";
+import { BRAND } from "../shared/brand";
 import { env, HttpError } from "./http";
 import { hasSecretKey, open, seal } from "./secret";
 
@@ -69,7 +70,7 @@ async function clientId(redirectUri: string): Promise<string> {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      client_name: "Vergaderplatform",
+      client_name: BRAND,
       redirect_uris: [redirectUri],
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],

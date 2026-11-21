@@ -154,7 +154,7 @@ export default function DashboardPage() {
                   <h2 className="section-title">Mijn openstaande acties</h2>
                   <Link to="/acties">Alle acties</Link>
                 </div>
-                <ActionList actions={data.myActions} userId={user.id} onChanged={reload} emptyTitle="Je hebt geen openstaande acties" />
+                <ActionList actions={data.myActions} userId={user.id} onChanged={reload} emptyTitle="Kortweg: niets meer te doen." />
               </section>
 
               <div className="stack" style={{ gap: 24 }}>
@@ -180,9 +180,7 @@ export default function DashboardPage() {
                     <ul className="list">
                       {data.recentDecisions.map((d) => (
                         <li key={d.id}>
-                          <strong className="num nowrap" style={{ color: "var(--ink)" }}>
-                            {d.number}
-                          </strong>
+                          <strong className="nr-pill">{d.number}</strong>
                           <div className="grow">
                             <Link className="title" to={`/vergaderingen/${d.meetingId}`}>
                               <span className={d.status === "ingetrokken" ? "strike" : ""}>{d.text}</span>

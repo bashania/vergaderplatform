@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { AuthenticationResponseJSON, RegistrationResponseJSON } from "@simplewebauthn/server";
 import { q, q1 } from "./db";
+import { BRAND } from "../shared/brand";
 import { bad, env, HttpError, optStr } from "./http";
 
 // Pas geladen bij inloggen of registreren met een passkey: de meeste verzoeken hebben dit niet nodig.
@@ -15,7 +16,7 @@ const helpers = () => import("@simplewebauthn/server/helpers");
  * domein, zet dan RP_ID vóórdat mensen passkeys aanmaken: passkeys van het oude
  * domein werken op het nieuwe niet.
  */
-const RP_NAME = "Vergaderplatform";
+const RP_NAME = BRAND;
 const CHALLENGE_MINUTES = 5;
 
 const rp = (url: URL) => ({ id: env("RP_ID") ?? url.hostname, origin: url.origin });

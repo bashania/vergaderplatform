@@ -56,7 +56,7 @@ export function eventIcs(m: { id: string; title: string; startsAt: string; durat
     [
       "BEGIN:VCALENDAR",
       "VERSION:2.0",
-      "PRODID:-//Vergaderplatform//NL",
+      "PRODID:-//Kortweg//NL",
       "METHOD:PUBLISH",
       "BEGIN:VEVENT",
       `UID:${m.id}@${host}`,
@@ -120,7 +120,7 @@ route.get(
     );
 
     const now = stamp(new Date());
-    const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Vergaderplatform//NL", "CALSCALE:GREGORIAN", "METHOD:PUBLISH", "X-WR-CALNAME:Vergaderingen", "X-PUBLISHED-TTL:PT1H"];
+    const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Kortweg//NL", "CALSCALE:GREGORIAN", "METHOD:PUBLISH", "X-WR-CALNAME:Vergaderingen", "X-PUBLISHED-TTL:PT1H"];
     for (const m of rows) {
       const start = new Date(m.startsAt);
       const link = `${c.url.origin}/vergaderingen/${m.id}`;

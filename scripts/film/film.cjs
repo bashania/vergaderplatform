@@ -31,16 +31,16 @@ function overlay() {
     };
     const card = el(
       "__card",
-      "inset:0;width:100vw;height:100vh;background:#13283b;display:none;align-items:center;justify-content:center;text-align:center;font-family:'IBM Plex Sans',sans-serif;",
+      "inset:0;width:100vw;height:100vh;background:#ffd92e;color:#18181b;display:none;align-items:center;justify-content:center;text-align:center;font-family:'Gabarito','Figtree',sans-serif;",
     );
     const cap = el(
       "__cap",
-      "inset:auto 0 26px 0;margin:0 auto;width:fit-content;max-width:940px;padding:13px 26px;border-radius:12px;background:rgb(12 28 43 / 94%);box-shadow:0 10px 34px rgb(0 0 0 / 35%);font:600 21px/1.4 'IBM Plex Sans',sans-serif;text-align:center;border-bottom:3px solid #f2b441;",
+      "inset:auto 0 26px 0;margin:0 auto;width:fit-content;max-width:940px;padding:13px 26px;border-radius:12px;background:rgb(24 24 27 / 94%);box-shadow:0 10px 34px rgb(0 0 0 / 35%);font:600 21px/1.4 'Figtree',sans-serif;text-align:center;border-bottom:3px solid #ffd92e;",
     );
     const cur = el(
       "__cur",
       "left:0;top:0;inset:0 auto auto 0;width:0;height:0;transition:none;",
-      '<svg width="26" height="26" viewBox="0 0 24 24" style="position:absolute;left:-3px;top:-2px;filter:drop-shadow(0 2px 3px rgb(0 0 0 / 45%))"><path d="M4 2l15 9.5-6.6 1.3L16 20l-3 1.4-3.6-7.2L4 19z" fill="#fff" stroke="#13283b" stroke-width="1.5" stroke-linejoin="round"/></svg><span id="__ring" style="position:absolute;left:-18px;top:-18px;width:36px;height:36px;border-radius:50%;border:3px solid #f2b441;opacity:0"></span>',
+      '<svg width="26" height="26" viewBox="0 0 24 24" style="position:absolute;left:-3px;top:-2px;filter:drop-shadow(0 2px 3px rgb(0 0 0 / 45%))"><path d="M4 2l15 9.5-6.6 1.3L16 20l-3 1.4-3.6-7.2L4 19z" fill="#fff" stroke="#18181b" stroke-width="1.5" stroke-linejoin="round"/></svg><span id="__ring" style="position:absolute;left:-18px;top:-18px;width:36px;height:36px;border-radius:50%;border:3px solid #ffd92e;opacity:0"></span>',
     );
     const raise = () => {
       for (const d of [card, cap, cur]) {
@@ -164,11 +164,11 @@ function overlay() {
     await wait(350);
   }
   const title = (big, small) =>
-    `<div><div style="width:76px;height:76px;margin:0 auto 26px;border-radius:19px;background:#0b6e78;display:grid;place-items:center"><svg width="46" height="46" viewBox="0 0 32 32"><path d="M8.5 10.5h15M8.5 16h9M8.5 21.5h6" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/><path d="m18.6 20.6 2.4 2.4 4.2-4.8" fill="none" stroke="#F2B441" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div style="font-size:46px;font-weight:700;letter-spacing:-0.01em">${big}</div><div style="margin-top:14px;font-size:23px;color:#a9c4cf;max-width:860px">${small}</div></div>`;
+    `<div><div style="width:76px;height:76px;margin:0 auto 26px;border-radius:21px;background:#18181b;display:grid;place-items:center"><svg width="52" height="52" viewBox="0 0 32 32"><path d="M9.5 22.5 22.5 9.5" fill="none" stroke="#fbfaf5" stroke-width="3.6" stroke-linecap="round"/><circle cx="9.5" cy="22.5" r="4.5" fill="#fbfaf5"/><circle cx="22.5" cy="9.5" r="4.5" fill="#ffd92e"/></svg></div><div style="font-size:50px;font-weight:800;letter-spacing:-0.02em">${big}</div><div style="margin-top:14px;font:500 23px/1.4 'Figtree',sans-serif;color:#3f3d38;max-width:860px">${small}</div></div>`;
 
   await page.goto(BASE + "/");
   await page.getByRole("heading", { level: 1 }).first().waitFor();
-  await card(title("Vergaderplatform", "Van agenda tot afgeronde actie, in één omgeving"));
+  await card(title("Kortweg", "De korte weg naar een besluit"));
   await page.mouse.move(mouse.x, mouse.y);
   if (REC) await cdp.send("Page.startScreencast", { format: "jpeg", quality: 93, maxWidth: 1920, maxHeight: 1080, everyNthFrame: 1 });
   await wait(2800);
