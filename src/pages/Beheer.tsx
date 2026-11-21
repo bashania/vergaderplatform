@@ -404,6 +404,7 @@ function Users() {
 // ---------- instellingen en logboek ----------
 
 import { MailSettingsCard } from "../components/Mail";
+import { SystemCheckCard } from "../components/System";
 
 type AiTest = { ok: boolean; model: string; ms?: number; reply?: string; error?: string };
 type Diagnostics = { functionRegion: string; dbHost: string; dbRoundTripMs: number; dbVersion: string; blobRegion: string };
@@ -436,6 +437,8 @@ function Settings() {
           </Form>
         </div>
       </section>
+      <SystemCheckCard />
+
       <MailSettingsCard />
 
       <section className="card">

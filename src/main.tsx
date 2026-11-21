@@ -10,6 +10,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth";
 import Layout, { RequireOrganisation } from "./Layout";
+import AanwezigheidPage from "./pages/Aanwezigheid";
 import AccountPage from "./pages/Account";
 import ActiesPage from "./pages/Acties";
 import BeheerPage from "./pages/Beheer";
@@ -42,6 +43,8 @@ function App() {
     <Routes>
       {/* Uitnodigings- en resetlinks werken altijd, ook als er iemand anders is ingelogd. */}
       <Route path="/welkom" element={<WelcomePage />} />
+      {/* Aan- of afmelden vanuit een e-mail: werkt zonder inloggen. */}
+      <Route path="/aanwezigheid" element={<AanwezigheidPage />} />
       {/* Vergadermodus: schermvullend, zonder menu. */}
       {user && <Route path="vergaderingen/:id/live" element={<LivePage />} />}
       {user ? (

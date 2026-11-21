@@ -4,6 +4,7 @@ import { api } from "../api";
 import { useAuth, useUser } from "../auth";
 import { parseAgenda } from "../agendaParse";
 import { AgendaPaste } from "../components/AgendaPaste";
+import { BallotsTab } from "../components/Ballots";
 import { DocList, UploadButton } from "../components/Docs";
 import { LinkModal, type LinkInfo } from "../components/LinkModal";
 import { ActionList, DecisionTable } from "../components/Records";
@@ -26,6 +27,7 @@ type OverlegDetail = {
 const TABS = [
   ["vergaderingen", "Vergaderingen"],
   ["besluiten", "Besluiten"],
+  ["stemrondes", "Stemrondes"],
   ["acties", "Acties"],
   ["stukken", "Vaste stukken"],
   ["leden", "Deelnemers"],
@@ -394,6 +396,7 @@ export default function OverlegPage() {
               </section>
             )}
 
+            {tab === "stemrondes" && <BallotsTab overlegId={data.overleg.id} canEdit={canEdit} meetings={data.meetings} />}
             {tab === "acties" && (
               <section className="card">
                 <div className="card-head">

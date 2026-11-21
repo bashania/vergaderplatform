@@ -23,6 +23,9 @@ Agenda's, stukken, besluiten en acties op één plek, zodat alle deelnemers alti
 - **Sneller plannen**: standaardagenda's (MT-overleg, werkoverleg, projectoverleg, bestuursvergadering) en de volgende vergadering in één klik, in hetzelfde ritme als de vorige.
 - **Inzicht** (beheerder): vergadertijd en persoonsuren, uitloop, besluiten, acties op tijd en openstaande acties per persoon, per overleg en in totaal; met een uurtarief ook een schatting van wat vergaderen kost.
 - **Vraag het archief**: de AI-assistent beantwoordt vragen in gewone taal over eerdere besluiten, acties en notulen, met de bronnen erbij.
+- **Aan- en afmelden vanuit de e-mail**: de agendamail en de herinnering hebben knoppen waarmee een deelnemer zonder in te loggen laat weten of hij erbij is.
+- **Stemrondes**: een besluit nemen buiten de vergadering om. Deelnemers stemmen met één klik; een aangenomen voorstel krijgt een besluitnummer en staat met de stemverhouding in de besluitenlijst.
+- **Systeemcontrole** (platformbeheerder): één knop die database, opslag, AI-assistent, mailserver, Plaud en de dagelijkse herinneringen echt aanspreekt en zegt of ze werken.
 - **In gebruik nemen**: een lijst "Aan de slag" op het overzicht van de beheerder (verdwijnt als alles is ingericht), een uitlegpagina per rol in het menu, en de actie- en besluitenlijst als bestand voor Excel.
 - **Transcript en Plaud**: de secretaris zet het transcript van de opname bij de vergadering, opgehaald uit Plaud of geplakt als tekst (ook uit Teams of Zoom). De AI-assistent maakt er concept-notulen per agendapunt van; de secretaris loopt ze na en neemt ze over.
 
@@ -77,6 +80,18 @@ De gekozen organisatie gaat mee in de header `x-organisation` en bepaalt wat de 
 - De dagelijkse taak (`netlify/functions/dagelijks.mts`, 05:30 UTC) stoot de achtergrondfunctie aan; die stuurt de herinneringen voor de vergaderingen van morgen en per persoon één overzicht van acties die vandaag of morgen aflopen. Alleen achterstand wordt één keer per week gemeld, op maandag.
 - Herinneringen zet iedereen zelf uit onder Mijn account. Wie zich voor een vergadering heeft afgemeld, krijgt er geen.
 - Antwoorden op de agenda- of verslagmail gaan naar de secretaris die hem verstuurde.
+
+### Aan- en afmelden vanuit de e-mail
+
+De knoppen in de mail openen `/aanwezigheid#<sleutel>~ja` (of `~nee`). De sleutel is een handtekening (HMAC, afgeleid van `TOKEN_KEY`) over vergadering en persoon: wie de link heeft, kan alleen de aanwezigheid van die ene persoon bij die ene vergadering zetten. De pagina vraagt één bevestigklik, zodat een virusscanner die links in e-mail alvast opent niets vastlegt.
+
+### Stemrondes
+
+Stemrecht hebben de deelnemers van het overleg; een beheerder die niet deelneemt, kijkt mee. De secretaris stelt de uitkomst vast volgens de regels van het overleg (meerderheid, unanimiteit, quorum): het platform telt, maar beslist niet. Een aangenomen voorstel wordt een gewoon besluit bij een vergadering van dat overleg (`server/routes/ballots.ts`).
+
+### Vertrouwelijke onderwerpen
+
+Wie deelneemt aan een overleg, ziet alles van dat overleg. Afscherming per agendapunt is er bewust niet: elke plek waar inhoud naar buiten komt (agenda, stukken, zoeken, archiefvragen, e-mail, agenda-abonnement, vergadermodus) zou die uitzondering moeten kennen, en één gemiste plek is een lek. Voor een kleinere kring maak je een eigen overleg met alleen die deelnemers.
 
 ### Agenda-abonnement
 

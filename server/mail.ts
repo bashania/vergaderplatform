@@ -50,7 +50,7 @@ export const clearSmtp = () => q(`DELETE FROM settings WHERE key = 'smtp'`);
 
 export type Recipient = { email: string; name: string };
 export type Message = {
-  kind: "uitnodiging" | "agenda" | "verslag" | "herinnering" | "acties" | "test";
+  kind: "uitnodiging" | "agenda" | "verslag" | "herinnering" | "acties" | "stemronde" | "test";
   to: Recipient;
   subject: string;
   /** Alinea's boven de knop. */
@@ -58,6 +58,8 @@ export type Message = {
   /** Blokken met een kopje en regels (agenda, besluiten, acties). */
   sections?: { title: string; lines: string[] }[];
   button?: { label: string; url: string };
+  /** Een vraag met keuzes als knoppen, bijvoorbeeld "Ben je erbij?". */
+  choice?: { question: string; options: { label: string; url: string }[] };
   /** Kleine tekst onderaan: waarom je deze mail krijgt. */
   footer: string;
   replyTo?: Recipient;
@@ -74,6 +76,7 @@ function render(m: Message, brand: string): { text: string; html: string } {
     `Beste ${m.to.name},`,
     ...m.intro,
     ...(m.sections ?? []).map((s) => `${s.title}\n${s.lines.map((l) => `- ${l}`).join("\n")}`),
+    ...(m.choice ? [`${m.choice.question}\n${m.choice.options.map((o) => `${o.label}: ${o.url}`).join("\n")}`] : []),
     ...(m.button ? [`${m.button.label}: ${m.button.url}`] : []),
     `--\n${m.footer}`,
   ].join("\n\n");
@@ -91,6 +94,16 @@ ${(m.sections ?? [])
         .join("")}</ul>`,
   )
   .join("\n")}
+${
+  m.choice
+    ? `<p style="margin:20px 0 8px;font-weight:600">${esc(m.choice.question)}</p><p style="margin:0 0 6px">${m.choice.options
+        .map(
+          (o) =>
+            `<a href="${esc(o.url)}" style="display:inline-block;margin:0 8px 8px 0;padding:9px 16px;border:1px solid #0b6e78;border-radius:8px;color:#0b6e78;font-weight:600;text-decoration:none">${esc(o.label)}</a>`,
+        )
+        .join("")}</p>`
+    : ""
+}
 ${m.button ? `<p style="margin:22px 0 6px"><a href="${esc(m.button.url)}" style="display:inline-block;padding:11px 20px;border-radius:8px;background:#0b6e78;color:#ffffff;font-weight:600;text-decoration:none">${esc(m.button.label)}</a></p>` : ""}
 </div>
 <div style="padding:14px 24px;border-top:1px solid #e1e7ec;color:#5a6b7d;font-size:12.5px">${br(m.footer)}</div>
@@ -103,24 +116,42 @@ ${m.button ? `<p style="margin:22px 0 6px"><a href="${esc(m.button.url)}" style=
 export type Mailer = { send: (m: Message) => Promise<boolean>; close: () => void };
 
 /** Geeft null als er geen mailserver is ingesteld. Sluit de verbinding na gebruik met close(). */
-export async function mailer(): Promise<Mailer | null> {
-  const smtp = await smtpSettings();
-  if (!smtp) return null;
-  const brand = (await q1<{ value: string }>(`SELECT value FROM settings WHERE key = 'orgName'`))?.value || "Vergaderplatform";
+async function transportFor(smtp: Smtp, pool: boolean) {
   const nodemailer = (await import("nodemailer")).default;
-  const transport = nodemailer.createTransport({
+  return nodemailer.createTransport({
     host: smtp.host,
     port: smtp.port,
     secure: smtp.security === "ssl",
     requireTLS: smtp.security === "starttls",
     ignoreTLS: smtp.security === "geen",
     auth: smtp.user ? { user: smtp.user, pass: smtp.pass } : undefined,
-    pool: true,
-    maxConnections: 1,
+    ...(pool ? { pool: true as const, maxConnections: 1 } : {}),
     connectionTimeout: 10_000,
     greetingTimeout: 10_000,
     socketTimeout: 20_000,
   });
+}
+
+/** Verbinden en aanmelden bij de mailserver, zonder iets te versturen. Geeft de foutmelding, of null als het lukt. */
+export async function verifySmtp(): Promise<string | null> {
+  const smtp = await smtpSettings();
+  if (!smtp) return "Er is geen mailserver ingesteld.";
+  const transport = await transportFor(smtp, false);
+  try {
+    await transport.verify();
+    return null;
+  } catch (e) {
+    return (e instanceof Error ? e.message : String(e)).slice(0, 300);
+  } finally {
+    transport.close();
+  }
+}
+
+export async function mailer(): Promise<Mailer | null> {
+  const smtp = await smtpSettings();
+  if (!smtp) return null;
+  const brand = (await q1<{ value: string }>(`SELECT value FROM settings WHERE key = 'orgName'`))?.value || "Vergaderplatform";
+  const transport = await transportFor(smtp, true);
   return {
     async send(m) {
       const log = await q1<{ id: number }>(

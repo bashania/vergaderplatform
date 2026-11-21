@@ -853,6 +853,18 @@ step("5d. Agenda-abonnement, punten aandragen en e-mail");
     toDee.text.slice(0, 400),
   );
   check("agendamail heeft een agendabestand als bijlage", toDee.attachments.length === 1 && toDee.attachments[0].content.toString().includes("SUMMARY:MT week 48"));
+  const admin_id = (await admin.get("/api/session")).data.user.id;
+  const rsvp = /\/aanwezigheid#([^~\s]+)~ja/.exec(toDee.text)?.[1] ?? "";
+  check("agendamail heeft knoppen om aan of af te melden", !!rsvp && toDee.text.includes(`${rsvp}~nee`) && toDee.html.includes("Ik ben verhinderd"), toDee.text.slice(0, 600));
+  const anon = new Client();
+  const rsvpInfo = await anon.get(`/api/rsvp/${rsvp}`);
+  check("aanmeldlink toont de vergadering zonder inloggen", rsvpInfo.status === 200 && rsvpInfo.data.title === "MT week 48" && rsvpInfo.data.name === "Dee Deelnemer" && rsvpInfo.data.attendance === "aanwezig", JSON.stringify(rsvpInfo.data));
+  check("afmelden via de link", (await anon.post(`/api/rsvp/${rsvp}`, { status: "afwezig" })).status === 200 && (await admin.get(`/api/meetings/${meetingId}`)).data.members.find((x) => x.id === dee.id).attendance === "afwezig");
+  check("ongeldige keuze geweigerd", (await anon.post(`/api/rsvp/${rsvp}`, { status: "misschien" })).status === 400);
+  check("vervalste link geweigerd", (await anon.post(`/api/rsvp/${rsvp.slice(0, -3)}abc`, { status: "aanwezig" })).status === 404);
+  const [rsvpMeeting, , rsvpSignature] = rsvp.split(".");
+  check("link van de een werkt niet voor een ander", (await anon.get(`/api/rsvp/${rsvpMeeting}.${admin_id}.${rsvpSignature}`)).status === 404);
+  check("weer aanmelden via de link", (await anon.post(`/api/rsvp/${rsvp}`, { status: "aanwezig" })).status === 200);
   inbox.length = 0;
   const verslagMail = await admin.post(`/api/meetings/${meetingId}/mail`, { kind: "verslag" });
   await arrived(verslagMail.data.sent ?? 99);
@@ -874,12 +886,14 @@ step("5d. Agenda-abonnement, punten aandragen en e-mail");
   await new Promise((r) => setTimeout(r, 2500));
   check("wie herinneringen uit heeft staan, krijgt er geen", inbox.length >= 1 && !inbox.some((m) => to(m) === dee.email), inbox.map(to).join());
   check("anderen krijgen de herinnering voor morgen", inbox.every((m) => m.subject.startsWith("Morgen: MT week 48")));
+  check("wie nog niets liet weten, kan vanuit de herinnering reageren", inbox.some((m) => m.text.includes("Ben je erbij?") && m.text.includes("/aanwezigheid#")));
   await dee.client.patch("/api/account/mail", { reminders: true });
   inbox.length = 0;
   await daily(taskKey);
   await arrived(2);
   await new Promise((r) => setTimeout(r, 800));
   const deeMails = inbox.filter((m) => to(m) === dee.email);
+  check("wie al heeft gereageerd, krijgt die vraag niet opnieuw", !deeMails.some((m) => m.text.includes("Ben je erbij?")));
   check("herinnering voor de vergadering van morgen", deeMails.some((m) => m.subject.startsWith("Morgen: MT week 48") && m.text.includes("Uitzetten kan onder Mijn account")), inbox.map((m) => `${to(m)}: ${m.subject}`).join(" | "));
   const digest = deeMails.find((m) => m.subject.startsWith("Je acties"));
   check("overzicht van aflopende en verlopen acties", !!digest && digest.text.includes("Cijfers aanleveren") && digest.text.includes("morgen") && digest.text.includes("Offertes opvragen") && digest.text.includes(`${BASE}/acties`), digest?.text.slice(0, 500));
@@ -933,6 +947,76 @@ step("5e. Inzicht en vraag het archief");
   const leaked = await outsider.post("/api/ai/ask", question);
   check("buitenstaander krijgt niets uit het archief", leaked.status === 200 && leaked.data.sources.length === 0 && !leaked.data.answer.toLowerCase().includes("begroting"), JSON.stringify(leaked.data));
   await admin.patch(`/api/organisations/${org1}`, { aiEnabled: false });
+}
+
+step("5f. Stemrondes en systeemcontrole");
+{
+  const bPath = `/api/overleggen/${overlegId}/ballots`;
+  check("deelnemer kan geen stemronde starten", (await dee.client.post(bPath, { title: "X" })).status === 403);
+  check("buitenstaander ziet geen stemrondes", (await bui.client.get(bPath)).status === 404);
+  const made = await admin.post(bPath, { title: "De offerte van hovenier Groen voor € 4.800 wordt geaccepteerd.", body: "Zie de bijlage.", closesOn: "2030-01-15" });
+  check("stemronde gestart (zonder mailserver niets gemaild)", made.status === 200 && !!made.data.id && made.data.mailed === 0, JSON.stringify(made));
+  const votePath = `/api/ballots/${made.data.id}/vote`;
+  const list1 = await dee.client.get(bPath);
+  check(
+    "deelnemer ziet de stemronde en mag stemmen",
+    list1.status === 200 && list1.data.ballots[0].id === made.data.id && list1.data.ballots[0].status === "open" && list1.data.canVote === true && list1.data.voters.some((v) => v.id === dee.id),
+    JSON.stringify(list1.data).slice(0, 300),
+  );
+  check("overzicht vraagt om je stem", (await dee.client.get("/api/dashboard")).data.openBallots.some((b) => b.id === made.data.id));
+  check("ongeldige stem geweigerd", (await dee.client.put(votePath, { vote: "misschien" })).status === 400);
+  check("buitenstaander kan niet stemmen", (await bui.client.put(votePath, { vote: "akkoord" })).status === 404);
+  check("stemmen met toelichting", (await dee.client.put(votePath, { vote: "niet_akkoord", comment: "Te duur." })).status === 200);
+  check("stem wijzigen", (await dee.client.put(votePath, { vote: "akkoord" })).status === 200);
+  const votes = (await admin.get(bPath)).data.ballots[0].votes;
+  check("stemmen zijn zichtbaar met naam, één per persoon", votes.length === 1 && votes[0].userId === dee.id && votes[0].name === "Dee Deelnemer" && votes[0].vote === "akkoord" && votes[0].comment === "", JSON.stringify(votes));
+  check("na stemmen verdwijnt de vraag van het overzicht", !(await dee.client.get("/api/dashboard")).data.openBallots.some((b) => b.id === made.data.id));
+
+  check("deelnemer kan de ronde niet sluiten", (await dee.client.post(`/api/ballots/${made.data.id}/close`, { outcome: "aangenomen" })).status === 403);
+  check("onbekende uitkomst geweigerd", (await admin.post(`/api/ballots/${made.data.id}/close`, { outcome: "misschien" })).status === 400);
+  const closed = await admin.post(`/api/ballots/${made.data.id}/close`, { outcome: "aangenomen", meetingId, decisionText: "De offerte van hovenier Groen wordt geaccepteerd." });
+  check("sluiten legt het besluit vast met een nummer", closed.status === 200 && closed.data.status === "aangenomen" && /^\d{4}-\d{3}$/.test(closed.data.decision?.number ?? ""), JSON.stringify(closed));
+  const decision = (await admin.get(`/api/meetings/${meetingId}`)).data.decisions.find((d) => d.number === closed.data.decision.number);
+  check("besluit vermeldt de stemverhouding", decision?.text.startsWith("De offerte van hovenier Groen wordt geaccepteerd. (Besloten buiten de vergadering op ") && decision.text.includes("1 akkoord, 0 niet akkoord, 0 onthoudingen"), decision?.text);
+  check("na sluiten kan niemand meer stemmen", (await dee.client.put(votePath, { vote: "niet_akkoord" })).status === 409);
+  const after = (await dee.client.get(bPath)).data.ballots[0];
+  check("gesloten ronde verwijst naar het besluit", after.status === "aangenomen" && after.decisionNumber === closed.data.decision.number && after.decisionMeetingId === meetingId);
+  check("twee keer sluiten kan niet", (await admin.post(`/api/ballots/${made.data.id}/close`, { outcome: "verworpen" })).status === 409);
+
+  // Aangenomen zonder direct vast te leggen, en later alsnog.
+  const second = await admin.post(bPath, { title: "De kerstborrel is op 18 december." });
+  check("sluiten zonder vastleggen", (await admin.post(`/api/ballots/${second.data.id}/close`, { outcome: "aangenomen" })).data.decision === null);
+  const later = await admin.post(`/api/ballots/${second.data.id}/decision`, { meetingId });
+  check("later alsnog in de besluitenlijst", later.status === 200 && !!later.data.decision.number && (await admin.post(`/api/ballots/${second.data.id}/decision`, { meetingId })).status === 409);
+  const third = await admin.post(bPath, { title: "Voorstel dat het niet haalt." });
+  check("verworpen voorstel wordt geen besluit", (await admin.post(`/api/ballots/${third.data.id}/close`, { outcome: "verworpen", meetingId })).data.decision === null);
+  check("verworpen voorstel niet alsnog vast te leggen", (await admin.post(`/api/ballots/${third.data.id}/decision`, { meetingId })).status === 409);
+
+  // Opruimen: latere stappen tellen de besluiten van deze vergadering.
+  const mine = (await admin.get(`/api/meetings/${meetingId}`)).data.decisions.filter((d) => d.text.includes("Besloten buiten de vergadering"));
+  for (const d of mine) await admin.del(`/api/decisions/${d.id}`);
+  check("testbesluiten opgeruimd", mine.length === 2);
+  for (const id of [made.data.id, second.data.id, third.data.id]) await admin.del(`/api/ballots/${id}`);
+  check("stemrondes verwijderd", (await admin.get(bPath)).data.ballots.length === 0);
+
+  // --- systeemcontrole: elk onderdeel wordt echt aangesproken ---
+  check("systeemcontrole alleen voor de platformbeheerder", (await dee.client.post("/api/admin/system/check")).status === 403);
+  const plaud = await startFakePlaud(8899);
+  const smtp = new SMTPServer({ authOptional: true, disabledCommands: ["STARTTLS"], onAuth: (a, _s, done) => done(null, { user: a.username }), onData: (s, _x, done) => (s.resume(), s.on("end", done)) });
+  await new Promise((r) => smtp.listen(2525, r));
+  const byKey = (res) => Object.fromEntries(res.data.checks.map((x) => [x.key, x]));
+  const off = byKey(await admin.post("/api/admin/system/check"));
+  check("zonder mailserver: e-mail niet actief, de rest werkt", off.db.status === "ok" && off.blobs.status === "ok" && off.ai.status === "ok" && off.plaud.status === "ok" && off.mail.status === "uit", JSON.stringify(off));
+  check("dagelijkse taak heeft een spoor achtergelaten", off.daily.status === "ok" && off.daily.detail.includes("herinneringen"), off.daily.detail);
+  await admin.put("/api/admin/mail", { host: "localhost", port: 2525, security: "geen", user: "mailer", pass: "geheim", fromAddress: "vergaderen@test.example" });
+  check("mailserver bereikbaar: e-mail werkt", byKey(await admin.post("/api/admin/system/check")).mail.status === "ok");
+  await admin.put("/api/admin/mail", { host: "localhost", port: 2526, security: "geen", user: "mailer", pass: "", fromAddress: "vergaderen@test.example" });
+  const broken = byKey(await admin.post("/api/admin/system/check"));
+  check("onbereikbare mailserver wordt gemeld", broken.mail.status === "fout" && broken.mail.detail.includes("mailserver"), broken.mail.detail);
+  await plaud.close();
+  check("onbereikbare Plaud wordt gemeld", byKey(await admin.post("/api/admin/system/check")).plaud.status === "fout");
+  await admin.del("/api/admin/mail");
+  await new Promise((r) => smtp.close(r));
 }
 
 step("6. Afronden, vergrendeling en overnemen");

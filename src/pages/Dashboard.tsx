@@ -17,7 +17,8 @@ import {
 } from "../lib";
 import { Empty, Icon, Loader, useLoad } from "../ui";
 
-type Dashboard = { upcoming: MeetingSummary[]; myActions: Action[]; recentDecisions: Decision[]; recentDocuments: Doc[] };
+type OpenBallot = { id: string; title: string; closesOn: string | null; overlegId: string; overlegName: string };
+type Dashboard = { upcoming: MeetingSummary[]; myActions: Action[]; recentDecisions: Decision[]; recentDocuments: Doc[]; openBallots: OpenBallot[] };
 
 export function MeetingRow({ m, past }: { m: MeetingSummary; past?: boolean }) {
   const soon = past ? "" : daysUntil(m.startsAt);
@@ -91,6 +92,31 @@ export default function DashboardPage() {
       <Loader loading={loading} error={error}>
         {data && (
           <>
+            {data.openBallots.length > 0 && (
+              <section className="card">
+                <div className="card-head">
+                  <h2 className="section-title">Je stem wordt gevraagd</h2>
+                  <span className="badge warm">
+                    {data.openBallots.length} {data.openBallots.length === 1 ? "stemronde" : "stemrondes"}
+                  </span>
+                </div>
+                <ul className="list">
+                  {data.openBallots.map((b) => (
+                    <li key={b.id}>
+                      <div className="grow">
+                        <Link className="title" to={`/overleggen/${b.overlegId}?tab=stemrondes`}>
+                          {b.title}
+                        </Link>
+                        <div className="meta">
+                          <span>{b.overlegName}</span>
+                          {b.closesOn && <span>stemmen tot en met {fmtDay(b.closesOn)}</span>}
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
             <section className="card">
               <div className="card-head">
                 <h2 className="section-title">Komende vergaderingen</h2>

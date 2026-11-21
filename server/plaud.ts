@@ -53,6 +53,12 @@ async function discover(): Promise<Endpoints> {
   return value;
 }
 
+/** Voor de systeemcontrole: haalt de inloggegevens van Plaud vers op; gooit een fout als dat niet lukt. */
+export async function plaudReachable(): Promise<void> {
+  endpoints = null;
+  await discover();
+}
+
 /** De aanmelding van dit platform bij Plaud, per terugkeeradres (verandert als het platform verhuist). */
 async function clientId(redirectUri: string): Promise<string> {
   const settingsKey = `plaud.client:${mcpUrl()}:${redirectUri}`;

@@ -7,6 +7,7 @@ import { clearSmtp, mailEnabled, mailer, nlDate, nlDay, nlTime, saveSmtp, sendTe
 import { route, type Ctx } from "../router";
 import { hasSecretKey, taskKey } from "../secret";
 import { eventIcs } from "./calendar";
+import { rsvpChoice } from "./rsvp";
 
 // ---------- instellen (platformbeheerder) ----------
 
@@ -117,8 +118,8 @@ route.post("/api/meetings/:id/mail", async (c) => {
   if (!m) throw new HttpError(409, "Er is geen mailserver ingesteld. De platformbeheerder doet dat onder Platformbeheer, Instellingen.");
   try {
     const [members, items, decisions, actions] = await Promise.all([
-      q<{ email: string; name: string }>(
-        `SELECT u.email, u.name FROM memberships mb JOIN users u ON u.id = mb.user_id WHERE mb.overleg_id = $1 AND u.active ORDER BY lower(u.name)`,
+      q<{ id: string; email: string; name: string }>(
+        `SELECT u.id, u.email, u.name FROM memberships mb JOIN users u ON u.id = mb.user_id WHERE mb.overleg_id = $1 AND u.active ORDER BY lower(u.name)`,
         [meeting.overlegId],
       ),
       q<{ id: string; parentId: string | null; title: string; kind: string }>(
@@ -164,6 +165,8 @@ route.post("/api/meetings/:id/mail", async (c) => {
               subject: `Agenda: ${meeting.title}, ${nlDate(meeting.startsAt)}`,
               intro: [`De agenda en de stukken voor ${meeting.title} staan klaar.`, ...(note ? [note] : [])],
               sections: [practical, ...(agenda.length ? [{ title: "Agenda", lines: agenda }] : [])],
+              // Aan- of afmelden kan direct vanuit de mail, zolang de vergadering niet is afgerond.
+              choice: meeting.status === "gepubliceerd" ? rsvpChoice(c.url.origin, meeting.id, to.id) : undefined,
               button: { label: "Agenda en stukken openen", url: link },
               footer,
               replyTo: { email: c.user.email, name: c.user.name },
@@ -196,15 +199,15 @@ route.post("/api/meetings/:id/mail", async (c) => {
 
 // ---------- dagelijkse herinneringen ----------
 
-type Reminder = { meetingId: string; title: string; startsAt: string; durationMin: number; location: string; onlineUrl: string; overlegName: string; organisationName: string; documentCount: number; userId: string; email: string; name: string };
+type Reminder = { attendance: string | null; meetingId: string; title: string; startsAt: string; durationMin: number; location: string; onlineUrl: string; overlegName: string; organisationName: string; documentCount: number; userId: string; email: string; name: string };
 type DueAction = { id: string; text: string; dueDate: string; late: boolean; overlegName: string; userId: string; email: string; name: string };
 
 /** Vergaderingen van morgen en acties die aflopen. Elke herinnering gaat één keer de deur uit. */
-async function daily(m: Mailer, origin: string, today: string): Promise<{ meetings: number; actions: number }> {
+async function daily(m: Mailer, origin: string, today: string): Promise<{ meetings: number; actions: number; votes: number }> {
   const reminders = await q<Reminder>(
     `SELECT mt.id AS meeting_id, mt.title, mt.starts_at, mt.duration_min, mt.location, mt.online_url, o.name AS overleg_name, org.name AS organisation_name,
             (SELECT count(*)::int FROM documents d WHERE d.meeting_id = mt.id AND d.status = 'ready') AS document_count,
-            u.id AS user_id, u.email, u.name
+            u.id AS user_id, u.email, u.name, a.status AS attendance
        FROM meetings mt
        JOIN overleggen o ON o.id = mt.overleg_id
        JOIN organisations org ON org.id = o.organisation_id
@@ -225,6 +228,8 @@ async function daily(m: Mailer, origin: string, today: string): Promise<{ meetin
       subject: `Morgen: ${r.title}, ${nlTime(r.startsAt)} uur`,
       intro: [`Morgen is ${r.title}.${r.documentCount ? ` Er ${r.documentCount === 1 ? "staat 1 stuk" : `staan ${r.documentCount} stukken`} klaar om te lezen.` : ""}`],
       sections: [{ title: "Wanneer en waar", lines: [`${nlDate(r.startsAt)}, ${nlTime(r.startsAt)} uur`, ...(r.location ? [r.location] : []), ...(r.onlineUrl ? [`Online: ${r.onlineUrl}`] : [])] }],
+      // Wie nog niets heeft laten weten, kan dat hier in één keer doen.
+      choice: r.attendance ? undefined : rsvpChoice(origin, r.meetingId, r.userId),
       button: { label: "Agenda en stukken openen", url: `${origin}/vergaderingen/${r.meetingId}` },
       footer: `Je krijgt deze herinnering omdat je deelneemt aan ${r.overlegName} (${r.organisationName}). Uitzetten kan onder Mijn account.`,
       dedupeKey: `herinnering:${r.meetingId}:${r.userId}`,
@@ -266,9 +271,35 @@ async function daily(m: Mailer, origin: string, today: string): Promise<{ meetin
     });
     if (sent) actions++;
   }
+  // Stemrondes die morgen sluiten: wie nog niet heeft gestemd, krijgt één herinnering.
+  const pending = await q<{ ballotId: string; title: string; overlegId: string; overlegName: string; userId: string; email: string; name: string }>(
+    `SELECT b.id AS ballot_id, b.title, o.id AS overleg_id, o.name AS overleg_name, u.id AS user_id, u.email, u.name
+       FROM ballots b
+       JOIN overleggen o ON o.id = b.overleg_id
+       JOIN organisations org ON org.id = o.organisation_id
+       JOIN memberships mb ON mb.overleg_id = o.id
+       JOIN users u ON u.id = mb.user_id
+      WHERE b.status = 'open' AND b.closes_on = $1::date + 1 AND NOT o.archived AND NOT org.archived
+        AND u.active AND u.mail_reminders
+        AND NOT EXISTS (SELECT 1 FROM ballot_votes v WHERE v.ballot_id = b.id AND v.user_id = u.id)`,
+    [today],
+  );
+  let votes = 0;
+  for (const p of pending) {
+    const sent = await m.send({
+      kind: "stemronde",
+      to: p,
+      subject: `Morgen sluit de stemronde: ${p.title}`,
+      intro: [`Je hebt nog niet gestemd over het voorstel "${p.title}". Stemmen kan tot en met morgen.`],
+      button: { label: "Stem uitbrengen", url: `${origin}/overleggen/${p.overlegId}?tab=stemrondes` },
+      footer: `Je krijgt deze herinnering omdat je deelneemt aan ${p.overlegName}. Uitzetten kan onder Mijn account.`,
+      dedupeKey: `stem:${p.ballotId}:${p.userId}`,
+    });
+    if (sent) votes++;
+  }
   // Het logboek hoeft niet eeuwig mee: na een halfjaar zegt een regel niets meer.
   await q(`DELETE FROM mail_log WHERE at < now() - interval '180 days'`);
-  return { meetings, actions };
+  return { meetings, actions, votes };
 }
 
 /**
@@ -278,14 +309,29 @@ async function daily(m: Mailer, origin: string, today: string): Promise<{ meetin
 route.post(
   "/api/background/daily",
   async (c) => {
-    if (!hasSecretKey() || !safeEqual(c.req.headers.get("x-task-key") ?? "", taskKey("daily"))) throw forbidden("Geen toegang.");
+    // De geplande taak bewijst zich met de afgeleide sleutel; de platformbeheerder kan de taak ook zelf starten.
+    const byTask = hasSecretKey() && safeEqual(c.req.headers.get("x-task-key") ?? "", taskKey("daily"));
+    if (!byTask && !c.user?.isAdmin) throw forbidden("Geen toegang.");
+    // Elke run laat een spoor achter, zodat de systeemcontrole kan zien of de taak loopt.
+    const trace = (result: string) =>
+      q(`INSERT INTO settings (key, value) VALUES ('daily.last', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [
+        JSON.stringify({ at: new Date().toISOString(), result }),
+      ]);
     const m = await mailer();
-    if (!m) return { skipped: "geen mailserver" };
+    if (!m) {
+      await trace("geen mailserver ingesteld, niets verstuurd");
+      return { skipped: "geen mailserver" };
+    }
     try {
       // Lokaal kan de test een datum meegeven; daarbuiten is het altijd vandaag, Nederlandse tijd.
       const asked = currentDeployContext() === "dev" ? (await c.body().catch(() => ({}) as Record<string, unknown>)).today : undefined;
       const today = typeof asked === "string" && /^\d{4}-\d{2}-\d{2}$/.test(asked) ? asked : new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Amsterdam" });
-      return await daily(m, c.url.origin, today);
+      const done = await daily(m, c.url.origin, today);
+      await trace(`${done.meetings} herinneringen voor vergaderingen, ${done.actions} overzichten van acties, ${done.votes} herinneringen voor stemrondes`);
+      return done;
+    } catch (e) {
+      await trace(`mislukt: ${e instanceof Error ? e.message.slice(0, 200) : "onbekende fout"}`);
+      throw e;
     } finally {
       m.close();
     }
