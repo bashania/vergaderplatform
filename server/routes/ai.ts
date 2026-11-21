@@ -260,7 +260,7 @@ route.get("/api/organisations/:id/ai", async (c) => {
  * Verbindingstest: één klein verzoek over dezelfde route als de echte verzoeken (model, inspanning,
  * gestructureerd antwoord), met de technische fout als het misgaat.
  */
-export async function aiSelfTest(userId: string): Promise<{ ok: boolean; available: boolean; model: string; ms?: number; reply?: string; error?: string }> {
+export async function aiSelfTest(userId: string | null): Promise<{ ok: boolean; available: boolean; model: string; ms?: number; reply?: string; error?: string }> {
   if (!aiAvailable()) {
     return {
       ok: false,

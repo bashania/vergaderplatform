@@ -76,6 +76,24 @@ const step = (s) => console.log(`\n${s}`);
 const admin = new Client();
 const adminCreds = { email: "beheer@test.example", password: "een-lang-testwachtwoord" };
 
+step("0. Bewaking: de health-controle start een zelftest als er nog geen is");
+{
+  const first = await new Client().get("/api/health");
+  check("health werkt op een leeg platform", first.status === 200 && first.data.db === "ok", JSON.stringify(first.data));
+  if (first.data.zelftest === null) {
+    let z = null;
+    for (let i = 0; i < 40 && !z; i++) {
+      await new Promise((r) => setTimeout(r, 500));
+      z = (await new Client().get("/api/health")).data.zelftest;
+    }
+    check("de zelftest is in de achtergrond gedaan en de uitslag staat in health", z?.door === "bewaking" && z.db === "ok" && z.blobs === "ok" && z.ai === "ok" && z.mail === "uit" && !Number.isNaN(Date.parse(z.op)), JSON.stringify(z));
+    const again = (await new Client().get("/api/health")).data.zelftest;
+    check("een verse uitslag start geen nieuwe zelftest", again.op === z?.op);
+  } else {
+    console.log("  (database was al gevuld: de start vanuit health is niet opnieuw getest)");
+  }
+}
+
 step("1. Inrichting en inloggen");
 let org1;
 {
@@ -801,6 +819,7 @@ step("5d. Agenda-abonnement, punten aandragen en e-mail");
 
   // --- e-mail: nagebouwde mailserver vangt alles op ---
   const inbox = [];
+  const systemMails = [];
   const logins = [];
   const smtp = new SMTPServer({
     authOptional: true,
@@ -810,7 +829,8 @@ step("5d. Agenda-abonnement, punten aandragen en e-mail");
       logins.push(`${auth.username}:${auth.password}`);
       done(null, { user: auth.username });
     },
-    onData: (stream, _session, done) => simpleParser(stream).then((mail) => (inbox.push(mail), done()), done),
+    // Berichten van de zelftest (aan de platformbeheerder) apart: de tests hieronder tellen de herinneringen.
+    onData: (stream, _session, done) => simpleParser(stream).then((mail) => (((mail.subject ?? "").startsWith("Systeemcontrole") ? systemMails : inbox).push(mail), done()), done),
   });
   await new Promise((r) => smtp.listen(2525, r));
   const to = (mail) => mail.to.value[0].address;
@@ -896,6 +916,16 @@ step("5d. Agenda-abonnement, punten aandragen en e-mail");
   const deeMails = inbox.filter((m) => to(m) === dee.email);
   check("wie al heeft gereageerd, krijgt die vraag niet opnieuw", !deeMails.some((m) => m.text.includes("Ben je erbij?")));
   check("herinnering voor de vergadering van morgen", deeMails.some((m) => m.subject.startsWith("Morgen: MT week 48") && m.text.includes("Uitzetten kan onder Mijn account")), inbox.map((m) => `${to(m)}: ${m.subject}`).join(" | "));
+  // De taak deed ook de zelftest. Plaud is hier onbereikbaar: de platformbeheerder krijgt daar één keer per dag bericht van.
+  for (let i = 0; i < 40 && systemMails.length < 1; i++) await new Promise((r) => setTimeout(r, 250));
+  await new Promise((r) => setTimeout(r, 1200));
+  check(
+    "zelftest: de platformbeheerder krijgt één bericht over wat niet werkt",
+    systemMails.length === 1 && to(systemMails[0]) === adminCreds.email && systemMails[0].subject === "Systeemcontrole: Koppeling met Plaud werkt niet" && systemMails[0].text.includes("/beheer?tab=instellingen"),
+    systemMails.map((m) => `${to(m)}: ${m.subject}`).join(" | "),
+  );
+  const afterTask = await admin.get("/api/admin/system/last");
+  check("zelftest: de dagelijkse taak bewaart de uitslag", afterTask.data.last?.by === "taak" && afterTask.data.last.checks.find((x) => x.key === "daily").status === "ok", JSON.stringify(afterTask.data.last?.by));
   const digest = deeMails.find((m) => m.subject.startsWith("Je acties"));
   check("overzicht van aflopende en verlopen acties", !!digest && digest.text.includes("Cijfers aanleveren") && digest.text.includes("morgen") && digest.text.includes("Offertes opvragen") && digest.text.includes(`${BASE}/acties`), digest?.text.slice(0, 500));
   check("niemand anders dan de actiehouder krijgt het overzicht", inbox.filter((m) => m.subject.startsWith("Je acties")).length === 1);
@@ -1016,6 +1046,28 @@ step("5f. Stemrondes en systeemcontrole");
   check("onbereikbare mailserver wordt gemeld", broken.mail.status === "fout" && broken.mail.detail.includes("mailserver"), broken.mail.detail);
   await plaud.close();
   check("onbereikbare Plaud wordt gemeld", byKey(await admin.post("/api/admin/system/check")).plaud.status === "fout");
+
+  // --- zelftest: de uitslag blijft bewaard en is zichtbaar voor wie hem nodig heeft ---
+  const lastCheck = await admin.get("/api/admin/system/last");
+  check("laatste uitslag bewaard", lastCheck.status === 200 && lastCheck.data.last.by === "beheerder" && byKey({ data: lastCheck.data.last }).plaud.status === "fout", JSON.stringify(lastCheck.data.last?.by));
+  check("laatste uitslag alleen voor de platformbeheerder", (await dee.client.get("/api/admin/system/last")).status === 403);
+  const issues = (await admin.get("/api/session")).data.systemIssues;
+  check("de platformbeheerder ziet in de sessie wat niet werkt", issues.includes("Koppeling met Plaud") && issues.includes("E-mail") && !issues.includes("Database"), JSON.stringify(issues));
+  check("een deelnemer krijgt die melding niet", (await dee.client.get("/api/session")).data.systemIssues.length === 0);
+  const healthText = await (await new Client().raw("GET", "/api/health")).text();
+  const hz = JSON.parse(healthText).zelftest;
+  check("health toont de uitslag in grote lijnen, zonder toelichting", hz?.plaud === "fout" && hz.mail === "fout" && hz.db === "ok" && hz.door === "beheerder" && !/bereikbaar|weigert|localhost/.test(healthText), healthText.slice(0, 400));
+  const selftest = (key) => new Client().call("POST", "/api/background/selftest", { body: {}, headers: { "x-task-key": key } });
+  await selftest("verkeerde-sleutel");
+  await new Promise((r) => setTimeout(r, 1500));
+  check("zelftest in de achtergrond niet zonder de juiste sleutel", (await admin.get("/api/admin/system/last")).data.last.by === "beheerder");
+  await selftest(createHash("sha256").update("daily:lokale-sleutel-voor-tests").digest("hex"));
+  let byWatch = null;
+  for (let i = 0; i < 40 && byWatch !== "bewaking"; i++) {
+    await new Promise((r) => setTimeout(r, 400));
+    byWatch = (await admin.get("/api/admin/system/last")).data.last.by;
+  }
+  check("zelftest in de achtergrond met de sleutel van de taak", byWatch === "bewaking");
   await admin.del("/api/admin/mail");
   await new Promise((r) => smtp.close(r));
 }

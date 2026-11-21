@@ -41,7 +41,7 @@ const TABLES: Table[] = [
   { name: "transcripts", order: "meeting_id", page: 3 },
   { name: "passkeys", order: "id", page: 300 },
   { name: "plaud_connections", order: "user_id", page: 300 },
-  { name: "settings", order: "key", page: 300, where: "key NOT LIKE 'restore.%' AND key <> 'daily.last'" },
+  { name: "settings", order: "key", page: 300, where: "key NOT LIKE 'restore.%' AND key NOT LIKE 'selftest.%' AND key <> 'daily.last'" },
   { name: "audit_log", order: "id", page: 500 },
 ];
 const NAMES = TABLES.map((t) => t.name);

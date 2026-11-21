@@ -7,6 +7,7 @@ import { clearSmtp, mailEnabled, mailer, nlDate, nlDay, nlTime, saveSmtp, sendTe
 import { route, type Ctx } from "../router";
 import { hasSecretKey, taskKey } from "../secret";
 import { eventIcs } from "./calendar";
+import { reportIssues, selfTest } from "./system";
 import { rsvpChoice } from "./rsvp";
 
 // ---------- instellen (platformbeheerder) ----------
@@ -317,9 +318,18 @@ route.post(
       q(`INSERT INTO settings (key, value) VALUES ('daily.last', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [
         JSON.stringify({ at: new Date().toISOString(), result }),
       ]);
+    // Na de herinneringen de zelftest: elk onderdeel echt aanspreken en de uitslag bewaren. Ook zonder mailserver.
+    const check = async () => {
+      try {
+        await reportIssues(await selfTest(c.serverRegion, "taak"), c.url.origin);
+      } catch (e) {
+        console.error("zelftest", e);
+      }
+    };
     const m = await mailer();
     if (!m) {
       await trace("geen mailserver ingesteld, niets verstuurd");
+      await check();
       return { skipped: "geen mailserver" };
     }
     try {
@@ -334,6 +344,7 @@ route.post(
       throw e;
     } finally {
       m.close();
+      await check();
     }
   },
   { public: true, audit: false },

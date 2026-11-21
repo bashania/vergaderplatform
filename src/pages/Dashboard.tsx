@@ -72,7 +72,7 @@ function greeting() {
 
 export default function DashboardPage() {
   const user = useUser();
-  const { org } = useAuth();
+  const { org, systemIssues } = useAuth();
   const { data, loading, error, reload } = useLoad<Dashboard>("/api/dashboard");
   return (
     <div className="page">
@@ -86,6 +86,13 @@ export default function DashboardPage() {
           </p>
         </div>
       </div>
+
+      {user.isAdmin && !!systemIssues?.length && (
+        <div className="notice warm" role="status">
+          <strong>Werkt niet volgens de laatste systeemcontrole:</strong> {systemIssues.join(", ")}.{" "}
+          <Link to="/beheer?tab=instellingen">Bekijk wat er aan de hand is</Link>.
+        </div>
+      )}
 
       <StartCard key={org?.id} />
 

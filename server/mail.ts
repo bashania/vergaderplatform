@@ -50,7 +50,7 @@ export const clearSmtp = () => q(`DELETE FROM settings WHERE key = 'smtp'`);
 
 export type Recipient = { email: string; name: string };
 export type Message = {
-  kind: "uitnodiging" | "agenda" | "verslag" | "herinnering" | "acties" | "stemronde" | "test";
+  kind: "uitnodiging" | "agenda" | "verslag" | "herinnering" | "acties" | "stemronde" | "systeem" | "test";
   to: Recipient;
   subject: string;
   /** Alinea's boven de knop. */

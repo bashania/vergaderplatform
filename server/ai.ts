@@ -49,7 +49,8 @@ export async function requireAi(organisationId: string): Promise<void> {
 type Request = {
   kind: "voorstellen" | "samenvatting" | "notulen" | "archief" | "test";
   organisationId: string | null;
-  userId: string;
+  /** Leeg bij de automatische zelftest. */
+  userId: string | null;
   system: string;
   content: Anthropic.MessageParam["content"];
   /** JSON-schema voor een gestructureerd antwoord. */

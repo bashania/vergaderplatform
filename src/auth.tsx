@@ -11,6 +11,8 @@ type Session = {
   aiAvailable?: boolean;
   /** Het platform kan zelf e-mail versturen (mailserver ingesteld door de platformbeheerder). */
   mailEnabled?: boolean;
+  /** Alleen voor de platformbeheerder: onderdelen die volgens de laatste zelftest niet werken. */
+  systemIssues?: string[];
 };
 type AuthValue = Session & {
   loading: boolean;

@@ -1,27 +1,19 @@
 import { randomUUID } from "node:crypto";
 import { aiAvailable } from "../ai";
 import { activated, createUserToken } from "../auth";
-import { dbHost, dbRegion, q, q1 } from "../db";
+import { dbHost, q, q1 } from "../db";
 import { bad, email, env, HttpError, json, notFound, optStr, str, uuid } from "../http";
 import { store } from "../files";
 import { plaudAvailable } from "../plaud";
 import { route } from "../router";
 import { withMail } from "./mail";
+import { dataLocation, lastSelfTest, startSelfTestIfStale } from "./system";
 
 /**
  * Alleen-lezen controle voor bewaking en na een deploy: werkt de database (inclusief
  * de datatypes die de app gebruikt) en is de opslag van stukken bereikbaar?
  * Schrijft niets en geeft geen gegevens prijs.
  */
-/** Regio van de functies, de database en de stukken, en of dat binnen de EU is. */
-export function dataLocation(serverRegion: string) {
-  const functies = serverRegion;
-  const database = dbRegion();
-  const stukken = env("BLOB_REGION") ?? "eu-central-1";
-  const eu = (r: string) => r.startsWith("eu-") || ["fra", "dub", "cdg", "mxp", "lokaal", "dev"].includes(r);
-  return { functies, database, stukken, binnenEu: eu(functies) && eu(database) && eu(stukken) };
-}
-
 route.get(
   "/api/health",
   async (c) => {
@@ -63,7 +55,18 @@ route.get(
       plaud: plaudAvailable() ? "beschikbaar" : "niet ingericht",
       // Waar de gegevens staan en worden verwerkt (alleen de regio, geen adressen).
       regio: dataLocation(c.serverRegion),
+      // De laatste zelftest: per onderdeel alleen de uitslag (ok, fout, uit, let_op), zonder toelichting.
+      zelftest: null as null | Record<string, string>,
     };
+    if (dbOk) {
+      try {
+        const last = await lastSelfTest();
+        if (last) body.zelftest = { op: last.at, door: last.by, ...Object.fromEntries(last.checks.map((k) => [k.key, k.status])) };
+        await startSelfTestIfStale(c.url.origin, last);
+      } catch (e) {
+        console.error("health zelftest", e);
+      }
+    }
     return dbOk && blobsOk ? body : json(body, 503);
   },
   { public: true },

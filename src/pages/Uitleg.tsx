@@ -147,9 +147,26 @@ export default function UitlegPage() {
             </Topic>
             <Topic title="Vertrouwelijke onderwerpen">
               <p>
-                Wie deelneemt aan een overleg, ziet alles van dat overleg. Moet een onderwerp in kleinere kring blijven (personeelszaken, een overname),
-                maak daar dan een eigen overleg voor met alleen die deelnemers. Zo kan er niets per ongeluk bij de verkeerde mensen terechtkomen: niet in de
-                agenda, de stukken, de zoekresultaten of de e-mail.
+                Wie deelneemt aan een overleg, ziet alles van dat overleg. Een beheerder van de organisatie ziet bovendien elk gewoon overleg. Moet een
+                onderwerp in kleinere kring blijven (personeelszaken, een overname, het vooroverleg van de raad van toezicht zonder de bestuurder), gebruik dan
+                een besloten overleg.
+              </p>
+              <ul>
+                <li>
+                  <strong>Besloten kring</strong>: de secretaris opent het overleg, tabblad Deelnemers, en kiest Besloten kring maken. Je kiest wie erin
+                  zitten. De kring is een eigen overleg met eigen vergaderingen, stukken, besluiten en acties.
+                </li>
+                <li>
+                  <strong>Bestaand overleg besloten maken</strong>: de secretaris kiest Bewerken en vinkt Besloten aan.
+                </li>
+                <li>
+                  <strong>Wat een beheerder nog ziet</strong>: dat het overleg bestaat, hoe het heet en wie eraan deelneemt. Niet de agenda, stukken, notulen,
+                  besluiten of acties. Kies dus een naam die zelf niets verraadt.
+                </li>
+              </ul>
+              <p>
+                De laatste secretaris van een besloten overleg kan zichzelf niet verwijderen: wijs eerst een andere aan. De platformbeheerder kan met de
+                back-up van het platform bij alle gegevens; dat is de enige rol die niet buiten te sluiten is.
               </p>
             </Topic>
             <Topic title="Beveiliging en de AI-assistent">
@@ -174,7 +191,8 @@ export default function UitlegPage() {
                 </p>
                 <p>
                   Met de Systeemcontrole op dezelfde pagina zie je in één keer of de database, de AI-assistent, de mailserver, Plaud en de dagelijkse
-                  herinneringen werken, en in welke regio de gegevens staan. Met Back-up download je alle gegevens als één bestand.
+                  herinneringen werken, en in welke regio de gegevens staan. Die controle loopt ook elke ochtend vanzelf: werkt er iets niet, dan staat
+                  er een stip bij Platformbeheer in het menu. Met Back-up download je alle gegevens als één bestand.
                 </p>
               </Topic>
             )}
