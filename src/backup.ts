@@ -63,11 +63,15 @@ export async function restoreBackup(file: File, code: string, onProgress: (done:
   return send({ step: "finish" });
 }
 
+export type BackupCheck = { rows: number; readable: number; present: number; missing: number; exportedAt: string };
+
 /**
  * Controleert een back-upbestand tegen het draaiende platform zonder iets te wijzigen: elke regel wordt
- * gelezen zoals terugzetten dat zou doen, en geteld hoeveel er nu (nog) in de database staan.
+ * gelezen zoals terugzetten dat zou doen, en geteld hoeveel er nu (nog) in de database staan. `missing`
+ * is het omgekeerde: regels die nu in het platform staan en niet in het bestand zitten (bijgekomen na
+ * de back-up). Het logboek telt daarbij niet mee; dat groeit bij elke handeling, ook bij de back-up zelf.
  */
-export async function verifyBackup(file: File, onProgress: (done: number, total: number) => void): Promise<{ rows: number; readable: number; present: number; exportedAt: string }> {
+export async function verifyBackup(file: File, onProgress: (done: number, total: number) => void): Promise<BackupCheck> {
   let backup: Backup;
   try {
     backup = JSON.parse(await file.text()) as Backup;
@@ -79,6 +83,7 @@ export async function verifyBackup(file: File, onProgress: (done: number, total:
   let done = 0;
   let readable = 0;
   let present = 0;
+  const presentIn: Record<string, number> = {};
   for (const [name, rows] of Object.entries(backup.tables)) {
     let batch: Row[] = [];
     let size = 0;
@@ -87,6 +92,7 @@ export async function verifyBackup(file: File, onProgress: (done: number, total:
       const r = await api<{ readable: number; present: number }>("/api/admin/backup/verify", { method: "POST", body: { table: name, rows: batch } });
       readable += r.readable;
       present += r.present;
+      presentIn[name] = (presentIn[name] ?? 0) + r.present;
       done += batch.length;
       onProgress(done, total);
       batch = [];
@@ -100,5 +106,7 @@ export async function verifyBackup(file: File, onProgress: (done: number, total:
     }
     await flush();
   }
-  return { rows: total, readable, present, exportedAt: backup.exportedAt };
+  const now = await api<{ tables: { name: string; rows: number }[] }>("/api/admin/backup");
+  const missing = now.tables.filter((t) => t.name !== "audit_log").reduce((n, t) => n + Math.max(0, t.rows - (presentIn[t.name] ?? 0)), 0);
+  return { rows: total, readable, present, missing, exportedAt: backup.exportedAt };
 }

@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { api, errorText } from "../api";
-import { downloadBackup, verifyBackup } from "../backup";
+import { type BackupCheck, downloadBackup, verifyBackup } from "../backup";
 import { fmtDateTime } from "../lib";
 import { Button, useRun, useToast } from "../ui";
 
@@ -10,7 +10,7 @@ export function BackupCard() {
   const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [checking, setChecking] = useState<string | null>(null);
-  const [checked, setChecked] = useState<{ rows: number; readable: number; present: number; exportedAt: string } | null>(null);
+  const [checked, setChecked] = useState<BackupCheck | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   return (
     <section className="card">
@@ -72,12 +72,16 @@ export function BackupCard() {
           />
         </div>
         {checked && (
-          <div className={`notice ${checked.readable === checked.rows ? "accent" : "warm"}`}>
+          <div className={`notice ${checked.readable === checked.rows && !checked.missing ? "accent" : "warm"}`}>
             <strong>
               {checked.readable === checked.rows ? "Dit bestand is compleet leesbaar." : `Niet alles is leesbaar: ${checked.readable} van ${checked.rows} regels.`}
             </strong>{" "}
             Back-up van {fmtDateTime(checked.exportedAt)} met {checked.rows.toLocaleString("nl-NL")} regels; {checked.present.toLocaleString("nl-NL")} daarvan staan nu
-            in het platform. Er is niets gewijzigd.
+            in het platform.{" "}
+            {checked.missing
+              ? `Let op: in het platform ${checked.missing === 1 ? "staat inmiddels 1 regel die" : `staan inmiddels ${checked.missing.toLocaleString("nl-NL")} regels die`} niet in dit bestand ${checked.missing === 1 ? "zit" : "zitten"}. Maak vlak voor een verhuizing een nieuwe back-up.`
+              : "Alles wat nu in het platform staat, zit in dit bestand (het logboek telt niet mee)."}{" "}
+            Er is niets gewijzigd.
           </div>
         )}
         {error && (

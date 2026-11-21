@@ -111,7 +111,7 @@ Drie plekken, elk met een eigen regio:
 - De back-up bevat alle tabellen behalve vluchtige zaken (sessies, eenmalige links, logboeken van mail en AI). De bestanden van stukken zitten er niet in; die blijven in de opslag van het project.
 - Terugzetten kan alleen op een leeg platform en met de installatiecode (`SETUP_CODE`). Tijdens het terugzetten blijft het inrichtscherm staan; een afgebroken actie kan opnieuw beginnen.
 - Rijen gaan terug zoals de database ze kende. Kolommen die een nieuwere versie erbij heeft gekregen, krijgen hun standaardwaarde.
-- Vóór een verhuizing: controleer het gedownloade bestand met "Een back-upbestand controleren". Het platform leest dan elke regel zoals terugzetten dat doet, zonder iets te wijzigen. Bij het verwijderen van de database in Netlify verdwijnen ook Netlify's eigen back-ups; het bestand is dan de enige kopie.
+- Vóór een verhuizing: controleer het gedownloade bestand met "Een back-upbestand controleren". Het platform leest dan elke regel zoals terugzetten dat doet, zonder iets te wijzigen, en meldt het als er sinds de back-up iets is bijgekomen. Bij het verwijderen van de database in Netlify verdwijnen ook Netlify's eigen back-ups; het bestand is dan de enige kopie.
 - Test: `BACKUP_OUT=backup.json npm run test:e2e`, daarna op een lege database `BACKUP=backup.json node scripts/restore-test.mjs`.
 
 ### Agenda-abonnement
