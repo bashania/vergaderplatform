@@ -8,6 +8,7 @@ import { AgendaPaste } from "../components/AgendaPaste";
 import { DocList, UploadButton } from "../components/Docs";
 import { ActionItem, ActionModal, DecisionModal } from "../components/Records";
 import { MeetingMailModal } from "../components/Mail";
+import { MyNote, useMyNotes } from "../components/MyNote";
 import { MeetingSuggestions } from "../components/Suggestions";
 import { TranscriptCard } from "../components/Transcript";
 import {
@@ -303,6 +304,7 @@ export default function MeetingPage() {
   const run = useRun();
   const ai = useAi();
   const { data, loading, error, reload } = useLoad<MeetingDetail>(`/api/meetings/${id}`);
+  const myNotes = useMyNotes(data?.myNotes);
   const [modal, setModal] = useState<ModalState>(null);
   const [showPresence, setShowPresence] = useState(false);
 
@@ -476,6 +478,8 @@ export default function MeetingPage() {
           )}
         </div>
       )}
+
+      <MyNote itemId={it.id} initial={myNotes.get(it.id)} onSaved={myNotes.set} />
 
       <Notes
         label="Notulen"

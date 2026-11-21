@@ -15,6 +15,7 @@ Agenda's, stukken, besluiten en acties op één plek, zodat alle deelnemers alti
 - **Tweestapsverificatie per organisatie**: een beheerder kan een passkey verplicht stellen. Wie met alleen een wachtwoord is ingelogd, komt die organisatie dan niet in.
 - **Status**: concept (alleen secretaris) → gepubliceerd (deelnemers zien alles) → afgerond (vergrendeld).
 - **Vergadermodus**: tijdens het overleg één scherm met het actuele agendapunt, de stukken, de klok (besteed tegenover gepland) en de notulen, die vanzelf worden opgeslagen. Deelnemers die het scherm openen, lopen zonder verversen mee met de secretaris. De bestede tijd per punt komt in het verslag.
+- **Eigen aantekeningen**: elke deelnemer maakt bij een agendapunt aantekeningen die alleen hij zelf ziet, voor de voorbereiding en tijdens de vergadering. Terug te vinden met zoeken.
 - **Stuk op het scherm en presentatiescherm**: de secretaris toont een pdf of afbeelding in de vergadermodus en bladert erdoor; wie meeloopt, ziet hetzelfde stuk en dezelfde pagina. Een apart presentatiescherm voor de beamer toont de agenda, het actuele punt, de klok en het stuk, zonder notulen.
 - **Meekijken met QR-code of code**: aanwezigen en gasten volgen de vergadering op hun eigen scherm zonder account. Ze zien alleen wat op het scherm staat. Per vergadering aan te zetten; stopt bij het einde van de vergadering.
 - **AI-assistent** (per organisatie aan te zetten): vat een pdf of tekstbestand samen ter voorbereiding en stelt na afloop besluiten en acties voor uit de notulen. De assistent legt zelf niets vast; de secretaris neemt een voorstel over of niet.
@@ -67,6 +68,10 @@ De gekozen organisatie gaat mee in de header `x-organisation` en bepaalt wat de 
 
 - De stand (bezig of niet, het actuele punt) staat bij de vergadering. Het scherm vraagt die elke 4 seconden op zolang het zichtbaar is; alleen als er iets is gewijzigd, haalt het de hele vergadering opnieuw op.
 - Alleen de secretaris of beheerder start, wisselt van punt en beëindigt. Afronden of terugzetten naar concept beëindigt de vergadermodus vanzelf.
+
+### Eigen aantekeningen
+
+Een aantekening hoort bij één deelnemer en één agendapunt (`personal_notes`). De server geeft bij een vergadering alleen de aantekeningen van de ingelogde gebruiker mee, en zoeken doorzoekt alleen de eigen aantekeningen. Ze zitten niet in het verslag, de afdruk, e-mail, het scherm in de zaal of wat naar de AI-assistent gaat, en opslaan komt niet in het logboek. Ze blijven te bewerken nadat een vergadering is afgerond. Grens: de platformbeheerder kan met de back-up bij alle gegevens, dus ook bij aantekeningen.
 
 ### Stuk op het scherm, presentatiescherm en meekijken
 
@@ -208,6 +213,14 @@ Daarnaast draait GitHub de schermen in drie browsers: Chromium, WebKit (de brows
 ```bash
 node scripts/film/seed-demo.cjs > demo.json
 BROWSER=chromium node scripts/browser-test.cjs demo.json
+```
+
+Het terugzetten van een back-up test je met de back-up die de volledige test wegschrijft:
+
+```bash
+BACKUP_OUT=backup.json npm run test:e2e
+scripts/start-test-server.sh
+BACKUP=backup.json node scripts/restore-test.mjs
 ```
 
 `scripts/start-test-server.sh` zet de testinstellingen (`scripts/test.env`) als `.env`, start de lokale server met een lege database en voert de migraties uit. De test verwacht een lege database: start de server opnieuw voor een volgende ronde.

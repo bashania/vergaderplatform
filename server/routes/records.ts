@@ -293,6 +293,12 @@ route.get("/api/search", async (c) => {
               acc.overleg_id, acc.overleg_name, doc.size::float8
          FROM documents doc JOIN acc ON acc.overleg_id = doc.overleg_id LEFT JOIN meetings mt ON mt.id = doc.meeting_id
         WHERE doc.status = 'ready' AND (mt.id IS NULL OR ${VISIBLE}) AND doc.name ILIKE $3
+       UNION ALL
+       -- Eigen aantekeningen: alleen die van de zoeker zelf.
+       SELECT 'aantekening', ai.id, ai.title, left(pn.text, 300), mt.starts_at, mt.id, acc.overleg_id, acc.overleg_name, NULL::float8
+         FROM personal_notes pn JOIN agenda_items ai ON ai.id = pn.agenda_item_id
+         JOIN meetings mt ON mt.id = ai.meeting_id JOIN acc ON acc.overleg_id = mt.overleg_id
+        WHERE pn.user_id = $1::uuid AND ${VISIBLE} AND pn.text ILIKE $3
      ) r
      ORDER BY r.at DESC
      LIMIT 100`,

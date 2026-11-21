@@ -1313,6 +1313,47 @@ step("5h. Stuk op het scherm, presentatiescherm en meekijken zonder account");
   check("codes raden wordt afgeremd", last.status === 429, `${last.status}`);
 }
 
+step("5i. Eigen aantekeningen: alleen zichtbaar voor wie ze schrijft");
+{
+  const merk = `kiezelsteen${RUN}`;
+  const notePath = `/api/items/${itemIds[1]}/my-note`;
+  const meetingPath = `/api/meetings/${meetingId}`;
+  check("deelnemer legt een eigen aantekening vast", (await dee.client.put(notePath, { text: `Vragen over ${merk}` })).status === 200);
+  const mine = (await dee.client.get(meetingPath)).data.myNotes;
+  check("de aantekening staat bij het agendapunt, voor de deelnemer zelf", mine.length === 1 && mine[0].agendaItemId === itemIds[1] && mine[0].text.includes(merk), JSON.stringify(mine));
+  const forSecretary = await (await admin.raw("GET", meetingPath)).text();
+  check("de secretaris krijgt de aantekening van een ander niet mee", !forSecretary.includes(merk) && JSON.parse(forSecretary).myNotes.length === 0);
+
+  // Nergens anders: overzichten, zoeken, lijsten, cijfers, de vergadermodus, het scherm, het archief en de meekijker.
+  await admin.post(`${meetingPath}/live`, { action: "start" });
+  const { watch } = (await admin.post(`${meetingPath}/watch`, { on: true })).data;
+  await admin.patch(`/api/organisations/${org1}`, { aiEnabled: true });
+  const sweep = ["/api/dashboard", `/api/search?q=${merk}`, "/api/decisions", "/api/actions?status=alle", `${meetingPath}/live`, `${meetingPath}/screen`, `/api/overleggen/${overlegId}`, `/api/organisations/${org1}/insights?months=12`, "/api/users"];
+  const elsewhere =
+    (await Promise.all(sweep.map(async (p) => (await admin.raw("GET", p)).text()))).join("\n") +
+    (await (await new Client().raw("GET", `/api/meekijken/${watch.token}`)).text()) +
+    JSON.stringify((await admin.post("/api/ai/ask", { question: `Wat is er gezegd over ${merk} in de vergadering?` })).data);
+  check("de aantekening duikt bij niemand anders op, ook niet bij de meekijker of in een archiefvraag", !elsewhere.includes(merk));
+  const ownAsk = await dee.client.post("/api/ai/ask", { question: `Wat heb ik genoteerd over ${merk} bij dit punt?` });
+  check("eigen aantekeningen gaan niet naar de AI-assistent", ownAsk.status === 200 && ownAsk.data.sources.length === 0 && !JSON.stringify(ownAsk.data).includes(merk), JSON.stringify(ownAsk.data).slice(0, 200));
+  await admin.patch(`/api/organisations/${org1}`, { aiEnabled: false });
+  await admin.post(`${meetingPath}/live`, { action: "stop" });
+
+  const found = (await dee.client.get(`/api/search?q=${merk}`)).data.results;
+  check("de eigenaar vindt zijn aantekening terug met zoeken", found.length === 1 && found[0].type === "aantekening" && found[0].meetingId === meetingId, JSON.stringify(found));
+  check("een ander vindt hem niet", (await admin.get(`/api/search?q=${merk}`)).data.results.length === 0);
+  check(
+    "ieder houdt zijn eigen aantekening bij hetzelfde punt",
+    (await admin.put(notePath, { text: "Aantekening van de secretaris" })).status === 200 &&
+      (await dee.client.get(meetingPath)).data.myNotes[0].text.includes(merk) &&
+      (await admin.get(meetingPath)).data.myNotes[0].text === "Aantekening van de secretaris",
+  );
+  check("wie de vergadering niet mag zien, kan er geen aantekening bij maken", (await bui.client.put(notePath, { text: "x" })).status === 404 && (await new Client().put(notePath, { text: "x" })).status === 401);
+  check("te lange aantekening geweigerd", (await dee.client.put(notePath, { text: "x".repeat(20001) })).status === 400);
+  check("een lege tekst verwijdert de aantekening", (await admin.put(notePath, { text: "  " })).status === 200 && (await admin.get(meetingPath)).data.myNotes.length === 0);
+  check("aantekeningen staan niet in het logboek", !(await admin.get("/api/audit")).data.entries.some((e) => e.action.includes("my-note")));
+}
+
 step("6. Afronden, vergrendeling en overnemen");
 let nextMeetingId;
 {

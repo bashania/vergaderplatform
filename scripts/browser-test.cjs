@@ -49,6 +49,23 @@ const inked = (page) =>
   await sec.locator(".live-step.current").waitFor();
   await sec.locator(".live-step", { hasText: "Groenplan binnentuin" }).click();
   await sec.getByRole("heading", { name: "Groenplan binnentuin" }).waitFor();
+
+  // Eigen aantekening: slaat vanzelf op, staat er nog na een ander agendapunt, en een andere deelnemer ziet hem niet.
+  const note = "Vragen naar de onderhoudskosten na het eerste jaar.";
+  await sec.getByRole("button", { name: "Eigen aantekening" }).click();
+  await sec.getByLabel("Eigen aantekening").fill(note);
+  await sec.getByText("Opgeslagen · alleen jij ziet dit").waitFor({ timeout: 15000 });
+  await sec.locator(".live-step", { hasText: "Begroting 2027" }).click();
+  await sec.getByRole("heading", { name: "Begroting 2027" }).waitFor();
+  await sec.locator(".live-step", { hasText: "Groenplan binnentuin" }).click();
+  await sec.getByRole("heading", { name: "Groenplan binnentuin" }).waitFor();
+  check("eigen aantekening staat er nog na een ander agendapunt", (await sec.getByLabel("Eigen aantekening").inputValue()) === note);
+  const otherCtx = await browser.newContext({ locale: "nl-NL" });
+  const otherLogin = await otherCtx.request.post(`${BASE}/api/login`, { data: { email: "karim@delinde.example", password: "demo-wachtwoord-van-karim" }, headers: { origin: BASE } });
+  const forOther = await (await otherCtx.request.get(`${BASE}/api/meetings/${demo.meeting}`, { headers: { "x-organisation": demo.org } })).text();
+  check("een andere deelnemer krijgt de aantekening niet te zien", otherLogin.ok() && forOther.includes("Groenplan binnentuin") && !forOther.includes("onderhoudskosten"));
+  await otherCtx.close();
+
   await sec.getByRole("button", { name: "Op het scherm" }).first().click();
   await sec.locator(".stage canvas:not([hidden])").waitFor({ timeout: 45000 });
   await sec.getByText("pagina 1 van 3").waitFor();

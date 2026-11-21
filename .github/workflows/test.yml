@@ -33,6 +33,12 @@ jobs:
         run: scripts/start-test-server.sh
       - name: Volledige test van de API
         run: npm run test:e2e
+        env:
+          BACKUP_OUT: backup.json
+      - name: De back-up terugzetten op een leeg platform
+        run: |
+          scripts/start-test-server.sh
+          BACKUP=backup.json node scripts/restore-test.mjs
       - name: Logboek van de server
         if: failure()
         run: tail -n 200 dev.log

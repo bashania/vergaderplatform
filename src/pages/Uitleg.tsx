@@ -49,6 +49,11 @@ export default function UitlegPage() {
               agendapunt waar ze bij horen. Een pdf opent direct in je browser.{ai ? " Met de knop Samenvatting bij een stuk lees je eerst de kern." : ""}
             </p>
             <p>
+              Bij elk agendapunt kun je een eigen aantekening maken: je vragen, opmerkingen of wat je wilt inbrengen. Alleen jij ziet die, ook de
+              secretaris en de beheerder niet. Tijdens de vergadering staat je aantekening bij het punt dat aan de orde is, en met Zoeken vind je hem later
+              terug.
+            </p>
+            <p>
               Geef bovenaan de vergadering aan of je erbij bent. De secretaris ziet dat op de presentielijst.
               {mailEnabled ? " In de e-mail met de agenda en in de herinnering kan dat ook, met één klik en zonder in te loggen." : ""}
             </p>

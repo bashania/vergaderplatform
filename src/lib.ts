@@ -173,6 +173,8 @@ export type MeetingDetail = {
   actions: Action[];
   members: Member[];
   carriedActions: Action[];
+  /** De eigen aantekeningen van de ingelogde gebruiker bij de agendapunten. */
+  myNotes?: { agendaItemId: string; text: string }[];
 };
 
 // ---------- weergave ----------

@@ -97,7 +97,7 @@ route.post("/api/overleggen/:id/meetings", async (c) => {
 route.get("/api/meetings/:id", async (c) => {
   const id = uuid(c.params.id, "Vergadering");
   const { meeting, role } = await loadMeeting(c.user, id);
-  const [items, documents, decisions, actions, members, carriedActions] = await Promise.all([
+  const [items, documents, decisions, actions, members, carriedActions, myNotes] = await Promise.all([
     q(
       `SELECT id, parent_id, position, title, kind, presenter, duration_min, description, notes, spent_sec
          FROM agenda_items WHERE meeting_id = $1 ORDER BY position, title`,
@@ -137,8 +137,14 @@ route.get("/api/meetings/:id", async (c) => {
         ORDER BY a.due_date NULLS LAST, a.created_at`,
       [meeting.overlegId, id, meeting.startsAt],
     ),
+    // De eigen aantekeningen van deze gebruiker; die van anderen komen nergens mee.
+    q(
+      `SELECT pn.agenda_item_id, pn.text FROM personal_notes pn JOIN agenda_items ai ON ai.id = pn.agenda_item_id
+        WHERE pn.user_id = $1 AND ai.meeting_id = $2`,
+      [c.user.id, id],
+    ),
   ]);
-  return { meeting, role, items, documents, decisions, actions, members, carriedActions };
+  return { meeting, role, items, documents, decisions, actions, members, carriedActions, myNotes };
 });
 
 route.patch("/api/meetings/:id", async (c) => {
@@ -335,6 +341,32 @@ route.post("/api/meetings/:id/items/bulk", async (c) => {
   if (!items.length) throw bad("Er zijn geen agendapunten herkend.");
   return { count: await insertItems(meetingId, items) };
 });
+
+/**
+ * Eigen aantekening bij een agendapunt: van en voor de gebruiker zelf. Kan bij elke vergadering die de
+ * gebruiker mag zien, ook als die is afgerond: de aantekening hoort niet bij het verslag. Een lege tekst
+ * verwijdert de aantekening.
+ */
+route.put(
+  "/api/items/:id/my-note",
+  async (c) => {
+    const id = uuid(c.params.id, "Agendapunt");
+    await loadMeeting(c.user, await meetingOfItem(id));
+    const text = optStr((await c.body()).text, "Aantekening", 20_000);
+    if (text.trim()) {
+      await q(
+        `INSERT INTO personal_notes (user_id, agenda_item_id, text) VALUES ($1, $2, $3)
+         ON CONFLICT (user_id, agenda_item_id) DO UPDATE SET text = EXCLUDED.text, updated_at = now()`,
+        [c.user.id, id, text],
+      );
+    } else {
+      await q(`DELETE FROM personal_notes WHERE user_id = $1 AND agenda_item_id = $2`, [c.user.id, id]);
+    }
+    return { ok: true };
+  },
+  // Elke toetsaanslag slaat op: niet in het logboek.
+  { audit: false },
+);
 
 async function meetingOfItem(itemId: string): Promise<string> {
   const row = await q1<{ meetingId: string }>(`SELECT meeting_id FROM agenda_items WHERE id = $1`, [itemId]);
