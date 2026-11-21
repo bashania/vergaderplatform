@@ -57,6 +57,12 @@ export function fakeNotes(items: { key: string; title: string }[], transcript: s
   return JSON.stringify({ items: out, general: "" });
 }
 
+/** Vraag het archief: het eerste besluit of de eerste notitie waarin een trefwoord uit de vraag voorkomt. */
+export function fakeAnswer(sources: { key: string; text: string }[], words: string[]): string {
+  const hit = sources.find((s) => words.some((w) => s.text.toLowerCase().includes(w)));
+  return JSON.stringify(hit ? { answer: `Gevonden in het archief: ${hit.text}`, sources: [hit.key, "ONBEKEND"] } : { answer: "Daarover is niets vastgelegd.", sources: [] });
+}
+
 export function fakeSummary(name: string): string {
   return (
     env("AI_FAKE_SUMMARY")?.replace(/\\n/g, "\n") ??

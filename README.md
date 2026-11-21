@@ -17,6 +17,13 @@ Agenda's, stukken, besluiten en acties op één plek, zodat alle deelnemers alti
 - **Vergadermodus**: tijdens het overleg één scherm met het actuele agendapunt, de stukken, de klok (besteed tegenover gepland) en de notulen, die vanzelf worden opgeslagen. Deelnemers die het scherm openen, lopen zonder verversen mee met de secretaris. De bestede tijd per punt komt in het verslag.
 - **AI-assistent** (per organisatie aan te zetten): vat een pdf of tekstbestand samen ter voorbereiding en stelt na afloop besluiten en acties voor uit de notulen. De assistent legt zelf niets vast; de secretaris neemt een voorstel over of niet.
 - **Installeerbaar**: op telefoon, tablet of computer als app op het beginscherm te zetten.
+- **Agendapunten aandragen**: deelnemers leveren tussen de vergaderingen door onderwerpen aan; de secretaris zet ze met één klik op een agenda of wijst ze af met een reden.
+- **E-mail en herinneringen**: met een eigen mailserver verstuurt het platform de uitnodiging, de agenda (met agendabestand), het verslag met besluiten en acties, een herinnering de dag vóór de vergadering en een bericht als een actie afloopt.
+- **Agenda-abonnement**: vergaderingen verschijnen vanzelf in Outlook, Google Agenda of de agenda van je telefoon.
+- **Sneller plannen**: standaardagenda's (MT-overleg, werkoverleg, projectoverleg, bestuursvergadering) en de volgende vergadering in één klik, in hetzelfde ritme als de vorige.
+- **Inzicht** (beheerder): vergadertijd en persoonsuren, uitloop, besluiten, acties op tijd en openstaande acties per persoon, per overleg en in totaal; met een uurtarief ook een schatting van wat vergaderen kost.
+- **Vraag het archief**: de AI-assistent beantwoordt vragen in gewone taal over eerdere besluiten, acties en notulen, met de bronnen erbij.
+- **In gebruik nemen**: een lijst "Aan de slag" op het overzicht van de beheerder (verdwijnt als alles is ingericht), een uitlegpagina per rol in het menu, en de actie- en besluitenlijst als bestand voor Excel.
 - **Transcript en Plaud**: de secretaris zet het transcript van de opname bij de vergadering, opgehaald uit Plaud of geplakt als tekst (ook uit Teams of Zoom). De AI-assistent maakt er concept-notulen per agendapunt van; de secretaris loopt ze na en neemt ze over.
 
 ## Rollen
@@ -63,6 +70,22 @@ De gekozen organisatie gaat mee in de header `x-organisation` en bepaalt wat de 
 - Eén verzoek moet binnen 60 seconden klaar zijn (limiet van Netlify Functions). Duurt het langer, dan krijgt de gebruiker een melding.
 - Controleren of de koppeling werkt: Platformbeheer, Instellingen, AI-assistent, knop "Test de koppeling".
 
+### E-mail en herinneringen
+
+- De platformbeheerder vult onder Platformbeheer, Instellingen de SMTP-gegevens in van een verzenddienst of hostingpartij en stuurt zichzelf een testmail. Het wachtwoord staat versleuteld in de database (`TOKEN_KEY`). Zonder mailserver verandert er niets: links kopieer je en deelnemers mail je uit je eigen programma.
+- Elke mail staat in `mail_log` (voor de beheerder zichtbaar, zonder de inhoud). Een herinnering heeft een sleutel en gaat daardoor nooit twee keer de deur uit.
+- De dagelijkse taak (`netlify/functions/dagelijks.mts`, 05:30 UTC) stoot de achtergrondfunctie aan; die stuurt de herinneringen voor de vergaderingen van morgen en per persoon één overzicht van acties die vandaag of morgen aflopen. Alleen achterstand wordt één keer per week gemeld, op maandag.
+- Herinneringen zet iedereen zelf uit onder Mijn account. Wie zich voor een vergadering heeft afgemeld, krijgt er geen.
+- Antwoorden op de agenda- of verslagmail gaan naar de secretaris die hem verstuurde.
+
+### Agenda-abonnement
+
+Een persoonlijke, geheime link (`/api/agenda/<sleutel>.ics`) die een agenda-app zonder inloggen ophaalt. Alleen de hash staat in de database; de link is één keer zichtbaar en te vervangen of in te trekken. Hij bevat titel, tijd, plaats, agendapunten en een link naar de stukken; van een organisatie die een passkey eist alleen titel, tijd en plaats. Concepten staan er niet in.
+
+### Opstarttijd
+
+Grote bibliotheken (taalmodel, MCP, mail, passkeys) worden pas geladen bij het eerste verzoek dat ze nodig heeft. Het gros van de verzoeken raakt ze niet, en de functie start daardoor merkbaar sneller op na een periode van stilte.
+
 ### Transcript en koppeling met Plaud
 
 - **Koppelen** doet elke gebruiker zelf onder Mijn account. Het platform sluit aan op de officiële MCP-server van Plaud (`mcp.plaud.ai`) met de inlogstandaard van MCP: OAuth met PKCE, waarbij het platform zich per webadres één keer als toepassing aanmeldt. Plaud documenteert deze route voor MCP-clients, niet uitdrukkelijk voor webtoepassingen; wijzigt Plaud iets, dan is plakken als tekst de uitwijk.
@@ -71,7 +94,7 @@ De gekozen organisatie gaat mee in de header `x-organisation` en bepaalt wat de 
 - **Concept-notulen** maken duurt langer dan een gewoon verzoek mag duren. Het werk loopt daarom in een achtergrondfunctie (`netlify/functions/api-background.mts`, tot 15 minuten); het scherm vraagt de stand op (`ai_jobs`).
 - **Waar de gegevens langs gaan**: de opname en het transcript staan bij Plaud; het ophalen loopt via Plaud's MCP-server in de VS; het maken van concept-notulen stuurt het transcript naar het taalmodel (zie AI-assistent). Informeer deelnemers vooraf dat de vergadering wordt opgenomen.
 
-Het platform verstuurt zelf geen e-mail. Uitnodigingslinks kopieert of mailt de secretaris of beheerder zelf; resetlinks (wachtwoord vergeten) maakt alleen de platformbeheerder.
+Zonder ingestelde mailserver verstuurt het platform zelf geen e-mail: uitnodigingslinks kopieert of mailt de secretaris of beheerder dan zelf. Resetlinks (wachtwoord vergeten) maakt alleen de platformbeheerder.
 
 ## Lokaal draaien
 
@@ -107,6 +130,8 @@ Met de lokale server aan en een lege database:
 npm run test:e2e
 ```
 
+De test start zelf een nagebouwde mailserver (poort 2525) en een nagebouwde Plaud-server (poort 8899); die poorten moeten vrij zijn. De hele test duurt enkele minuten.
+
 De test doorloopt ook de passkeys, met een software-authenticator (`scripts/soft-authenticator.mjs`) die doet wat een telefoon of laptop doet, en de koppeling met Plaud tegen de nagebouwde server (poort 8899 moet vrij zijn).
 
 De herkenning van geplakte agenda's:
@@ -133,7 +158,7 @@ De samenvatting en de voorstellen in de film komen uit de lokale testmodus, niet
 | `SETUP_CODE` | Eenmalige code waarmee de eerste platformbeheerder zijn account aanmaakt. Daarna zonder functie; verwijder de variabele na de inrichting. |
 | `RP_ID` | Domein waaraan passkeys worden gebonden. Standaard de hostnaam van de site. Alleen zetten bij een eigen domein, en vóórdat er passkeys zijn aangemaakt. |
 | `BLOB_REGION` | Regio van de stukken (standaard `eu-central-1`). Niet wijzigen na ingebruikname: bestaande stukken verhuizen niet mee. |
-| `TOKEN_KEY` | Geheime sleutel waarmee de toegang tot Plaud versleuteld wordt opgeslagen. Zonder deze variabele is de koppeling met Plaud uitgeschakeld. Wijzigen maakt bestaande koppelingen ongeldig: gebruikers koppelen dan opnieuw. |
+| `TOKEN_KEY` | Geheime sleutel waarmee de toegang tot Plaud en het wachtwoord van de mailserver versleuteld worden opgeslagen, en waarmee de dagelijkse taak zich aanmeldt. Zonder deze variabele zijn de koppeling met Plaud en e-mail uitgeschakeld. Wijzigen maakt ze ongeldig: gebruikers koppelen Plaud opnieuw en de beheerder vult de mailserver opnieuw in. |
 | `AI_MODEL` | Model van de AI-assistent (standaard `claude-opus-5-5`). Alleen een actueel Claude-model dat Netlify AI Gateway aanbiedt. |
 
 ## Schemawijzigingen

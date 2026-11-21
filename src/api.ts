@@ -113,6 +113,21 @@ export async function downloadInParts(doc: Pick<Doc, "id" | "name" | "size" | "m
   saveBlob(new Blob(parts, { type: "application/octet-stream" }), doc.name);
 }
 
+/**
+ * Lijst als csv-bestand dat Excel direct goed opent: puntkomma als scheidingsteken (Nederlandse Excel)
+ * en een markering zodat letters met accenten kloppen.
+ */
+export function downloadCsv(name: string, rows: (string | number | null | undefined)[][]) {
+  const cell = (v: string | number | null | undefined) => {
+    let s = v === null || v === undefined ? "" : String(v);
+    // Tekst die met een formuleteken begint, zou Excel als formule uitvoeren.
+    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+    return `"${s.replace(/"/g, '""')}"`;
+  };
+  const text = rows.map((r) => r.map(cell).join(";")).join("\r\n");
+  saveBlob(new Blob(["\ufeff", text], { type: "text/csv;charset=utf-8" }), name);
+}
+
 export function saveBlob(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");

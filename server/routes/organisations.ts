@@ -2,9 +2,10 @@ import { randomUUID } from "node:crypto";
 import { requireOrgAdmin } from "../access";
 import { activated } from "../auth";
 import { q, q1 } from "../db";
-import { bad, forbidden, HttpError, str, uuid } from "../http";
+import { bad, forbidden, HttpError, int, str, uuid } from "../http";
 import { findOrInviteUser, reinvite } from "../people";
 import { route } from "../router";
+import { withMail } from "./mail";
 
 async function nameTaken(name: string, exceptId: string | null): Promise<boolean> {
   return !!(await q1(`SELECT 1 AS x FROM organisations WHERE lower(name) = lower($1) AND ($2::uuid IS NULL OR id <> $2::uuid)`, [name, exceptId]));
@@ -70,6 +71,12 @@ route.patch("/api/organisations/:id", async (c) => {
     vals.push(b.requirePasskey === true);
     sets.push(`require_passkey = $${vals.length}`);
   }
+  if (b.hourlyRate !== undefined) {
+    // Uurtarief voor de schatting van vergaderkosten op de pagina Inzicht; leeg laten kan.
+    await requireOrgAdmin(c.user, id);
+    vals.push(b.hourlyRate === null || b.hourlyRate === "" ? null : int(b.hourlyRate, "Uurtarief", 1, 1000));
+    sets.push(`hourly_rate = $${vals.length}`);
+  }
   if (b.aiEnabled !== undefined) {
     // Of notulen en stukken naar een taalmodel mogen, beslist de organisatie zelf, niet de platformbeheerder.
     await requireOrgAdmin(c.user, id);
@@ -113,7 +120,7 @@ route.post("/api/organisations/:id/admins", async (c) => {
     [id, person.userId],
   );
   if (!added.length) throw new HttpError(409, `${person.name} is al beheerder van deze organisatie.`);
-  return person;
+  return withMail(c, person.userId, person);
 });
 
 async function assertNotLastAdmin(orgId: string, userId: string) {
@@ -162,5 +169,5 @@ route.post("/api/organisations/:id/people/:userId/invite", async (c) => {
     [id, userId],
   );
   if (!inOrg) throw new HttpError(404, "Persoon niet gevonden.");
-  return reinvite(userId, c.user.id);
+  return withMail(c, userId, await reinvite(userId, c.user.id));
 });

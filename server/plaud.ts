@@ -1,9 +1,8 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { createHash, randomBytes } from "node:crypto";
 import { q, q1 } from "./db";
 import { currentDeployContext } from "./files";
 import { env, HttpError } from "./http";
+import { hasSecretKey, open, seal } from "./secret";
 
 /**
  * Koppeling met Plaud (opnameapparaat met transcriptie), via de officiële MCP-server van Plaud.
@@ -20,30 +19,7 @@ const PLAUD_MCP_URL = "https://mcp.plaud.ai/mcp";
 /** Alleen lokaal is de server te vervangen door een nagebouwde (scripts/fake-plaud.mjs), voor de tests. */
 const mcpUrl = () => (currentDeployContext() === "dev" && env("PLAUD_MCP_URL")) || PLAUD_MCP_URL;
 
-export const plaudAvailable = () => !!env("TOKEN_KEY");
-
-// ---------- versleuteling van de sleutels ----------
-
-function key(): Buffer {
-  const secret = env("TOKEN_KEY");
-  if (!secret) throw new HttpError(503, "De koppeling met Plaud is op dit platform niet ingericht.");
-  return createHash("sha256").update(secret).digest();
-}
-
-function seal(plain: string): string {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key(), iv);
-  const data = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
-  return ["v1", iv.toString("base64url"), cipher.getAuthTag().toString("base64url"), data.toString("base64url")].join(".");
-}
-
-function open(sealed: string): string {
-  const [version, iv, tag, data] = sealed.split(".");
-  if (version !== "v1" || !iv || !tag || data === undefined) throw new Error("onbekend formaat");
-  const decipher = createDecipheriv("aes-256-gcm", key(), Buffer.from(iv, "base64url"));
-  decipher.setAuthTag(Buffer.from(tag, "base64url"));
-  return Buffer.concat([decipher.update(Buffer.from(data, "base64url")), decipher.final()]).toString("utf8");
-}
+export const plaudAvailable = hasSecretKey;
 
 // ---------- inloggen bij Plaud (OAuth met PKCE) ----------
 
@@ -103,7 +79,7 @@ async function clientId(redirectUri: string): Promise<string> {
 
 /** Begin van het koppelen: geeft het adres bij Plaud waar de gebruiker toestemming geeft. */
 export async function startConnect(userId: string, redirectUri: string): Promise<string> {
-  key(); // Zonder versleutelingssleutel beginnen we er niet aan.
+  seal("proef"); // Zonder versleutelingssleutel beginnen we er niet aan.
   const [{ authorize }, id] = await Promise.all([discover(), clientId(redirectUri)]);
   const state = randomBytes(24).toString("base64url");
   const verifier = randomBytes(48).toString("base64url");
@@ -234,6 +210,11 @@ function payload(text: string): unknown {
 }
 
 async function session<T>(token: string, work: (call: Call) => Promise<T>): Promise<T> {
+  // Pas hier geladen: alleen wie iets uit Plaud ophaalt, heeft de MCP-bibliotheek nodig.
+  const [{ Client }, { StreamableHTTPClientTransport }] = await Promise.all([
+    import("@modelcontextprotocol/sdk/client/index.js"),
+    import("@modelcontextprotocol/sdk/client/streamableHttp.js"),
+  ]);
   const transport = new StreamableHTTPClientTransport(new URL(mcpUrl()), { requestInit: { headers: { authorization: `Bearer ${token}` } } });
   const client = new Client({ name: "vergaderplatform", version: "1.0.0" });
   try {

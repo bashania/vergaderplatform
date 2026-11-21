@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
 import { q, q1 } from "./db";
 import { currentDeployContext } from "./files";
 import { env, forbidden, HttpError } from "./http";
@@ -14,6 +14,16 @@ import { env, forbidden, HttpError } from "./http";
  * - De gateway geeft geen bèta-headers door. Een automatische terugval naar een ander model bij een
  *   weigering (server-side fallbacks) kan daardoor niet; een weigering melden we netjes aan de gebruiker.
  */
+
+/**
+ * Grote bibliotheken laden we pas als ze nodig zijn: zo start de server snel op voor de
+ * vele verzoeken die niets met het taalmodel doen.
+ */
+let Sdk: typeof Anthropic | null = null;
+async function sdk(): Promise<typeof Anthropic> {
+  Sdk ??= (await import("@anthropic-ai/sdk")).default;
+  return Sdk;
+}
 
 /** Ander model nodig? Zet AI_MODEL op een actueel Claude-model dat de gateway aanbiedt. */
 export const aiModel = () => env("AI_MODEL") ?? "claude-opus-5-5";
@@ -37,7 +47,7 @@ export async function requireAi(organisationId: string): Promise<void> {
 }
 
 type Request = {
-  kind: "voorstellen" | "samenvatting" | "notulen" | "test";
+  kind: "voorstellen" | "samenvatting" | "notulen" | "archief" | "test";
   organisationId: string | null;
   userId: string;
   system: string;
@@ -77,29 +87,32 @@ function record(r: Request, model: string, ok: boolean, usage?: { input_tokens: 
 
 /** Technische foutmelding, voor de verbindingstest van de platformbeheerder. */
 export function aiErrorDetail(e: unknown): string {
-  if (e instanceof Anthropic.APIError) return `${e.status ?? "geen status"}: ${e.message}`;
+  if (Sdk && e instanceof Sdk.APIError) return `${e.status ?? "geen status"}: ${e.message}`;
   return e instanceof Error ? e.message : String(e);
 }
 
 function userError(e: unknown): unknown {
   if (e instanceof HttpError) return e;
+  // Zonder geladen bibliotheek kan de fout daar niet vandaan komen.
+  const A = Sdk;
+  if (!A) return e;
   // Van specifiek naar algemeen: een time-out is ook een verbindingsfout, en alles is een APIError.
-  if (e instanceof Anthropic.APIUserAbortError || e instanceof Anthropic.APIConnectionTimeoutError) {
+  if (e instanceof A.APIUserAbortError || e instanceof A.APIConnectionTimeoutError) {
     return new HttpError(504, "Het taalmodel deed er te lang over. Probeer het opnieuw, of met een korter stuk.");
   }
-  if (e instanceof Anthropic.RateLimitError) {
+  if (e instanceof A.RateLimitError) {
     return new HttpError(429, "De AI-assistent heeft het druk of het tegoed is op. Probeer het over een minuut opnieuw.");
   }
-  if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) {
+  if (e instanceof A.AuthenticationError || e instanceof A.PermissionDeniedError) {
     return new HttpError(503, "De AI-assistent is niet bereikbaar. Vraag de platformbeheerder de koppeling te testen.");
   }
-  if (e instanceof Anthropic.BadRequestError || e instanceof Anthropic.ContentTooLargeError) {
+  if (e instanceof A.BadRequestError || e instanceof A.ContentTooLargeError) {
     return new HttpError(422, "Het taalmodel kon deze invoer niet verwerken. Het stuk is mogelijk te groot of beschadigd.");
   }
-  if (e instanceof Anthropic.APIConnectionError) {
+  if (e instanceof A.APIConnectionError) {
     return new HttpError(502, "Geen verbinding met het taalmodel. Probeer het opnieuw.");
   }
-  if (e instanceof Anthropic.APIError) {
+  if (e instanceof A.APIError) {
     return new HttpError(502, "Het taalmodel gaf een fout. Probeer het later opnieuw.");
   }
   return e;
@@ -119,7 +132,7 @@ export async function ask(r: Request, raw = false): Promise<{ text: string; mode
   const limit = r.timeLimitMs ?? TIME_LIMIT_MS;
   try {
     // De gateway vult sleutel en adres in; zelf opnieuw proberen doen we niet (de tijd is daarvoor te krap).
-    const client = new Anthropic({ maxRetries: 0, timeout: limit });
+    const client = new (await sdk())({ maxRetries: 0, timeout: limit });
     // Streamen houdt de verbinding levend bij een lang antwoord. De klok hieronder begrenst het geheel.
     const stream = client.messages.stream({
       model,

@@ -43,6 +43,8 @@ const ICONS = {
   video: '<path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2"/>',
   copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
   lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  chart: '<path d="M3 3v18h18"/><path d="m7 15 4-5 3 3 5-7"/>',
+  help: '<circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/>',
   play: '<path d="M6 4l14 8-14 8V4Z"/>',
   stop: '<rect x="5" y="5" width="14" height="14" rx="2"/>',
   left: '<path d="m15 18-6-6 6-6"/>',

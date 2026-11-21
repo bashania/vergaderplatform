@@ -6,6 +6,7 @@ import { bad, email, env, HttpError, json, notFound, optStr, str, uuid } from ".
 import { store } from "../files";
 import { plaudAvailable } from "../plaud";
 import { route } from "../router";
+import { withMail } from "./mail";
 
 /**
  * Alleen-lezen controle voor bewaking en na een deploy: werkt de database (inclusief
@@ -89,7 +90,7 @@ route.post(
     const id = randomUUID();
     await q(`INSERT INTO users (id, email, name, is_admin) VALUES ($1, $2, $3, $4)`, [id, mail, name, isAdmin]);
     const link = await createUserToken(id, "invite", c.user.id);
-    return { id, ...link };
+    return withMail(c, id, { id, ...link });
   },
   { admin: true },
 );
@@ -142,7 +143,7 @@ route.post(
     );
     if (!u) throw notFound("Gebruiker niet gevonden.");
     if (!u.active) throw bad("Dit account is geblokkeerd. Activeer het eerst.");
-    return createUserToken(id, u.activated ? "reset" : "invite", c.user.id);
+    return withMail(c, id, await createUserToken(id, u.activated ? "reset" : "invite", c.user.id));
   },
   { admin: true },
 );

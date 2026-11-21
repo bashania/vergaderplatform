@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useAuth, useUser } from "../auth";
+import { StartCard } from "../components/StartCard";
 import { ActionList } from "../components/Records";
 import { DocList } from "../components/Docs";
 import {
@@ -84,6 +85,8 @@ export default function DashboardPage() {
           </p>
         </div>
       </div>
+
+      <StartCard key={org?.id} />
 
       <Loader loading={loading} error={error}>
         {data && (

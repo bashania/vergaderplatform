@@ -7,8 +7,10 @@ import { AgendaPaste } from "../components/AgendaPaste";
 import { DocList, UploadButton } from "../components/Docs";
 import { LinkModal, type LinkInfo } from "../components/LinkModal";
 import { ActionList, DecisionTable } from "../components/Records";
+import { SuggestionsCard } from "../components/Suggestions";
 import { fromLocalInput, toLocalInput, type Action, type Decision, type Doc, type Member, type MeetingSummary, type Role } from "../lib";
 import { Button, Empty, Field, Form, Loader, Modal, useLoad, useRun } from "../ui";
+import { AGENDA_TEMPLATES } from "../templates";
 import { MeetingRow } from "./Dashboard";
 
 type OverlegDetail = {
@@ -37,19 +39,37 @@ function defaultStart(): string {
   return toLocalInput(d.toISOString());
 }
 
-function NewMeeting({ data, onClose }: { data: OverlegDetail; onClose: () => void }) {
+/**
+ * Datum voor de volgende vergadering na `from`: hetzelfde ritme als tussen de vorige twee
+ * (anders vier weken), op dezelfde tijd, en altijd in de toekomst.
+ */
+function nextStart(from: MeetingSummary, meetings: MeetingSummary[]): string {
+  const day = 86_400_000;
+  const start = new Date(from.startsAt).getTime();
+  const before = meetings.map((m) => new Date(m.startsAt).getTime()).filter((t) => t < start).sort((a, b) => b - a)[0];
+  let interval = before ? Math.round((start - before) / day) : 28;
+  if (interval < 1 || interval > 400) interval = 28;
+  const next = new Date(start);
+  do next.setDate(next.getDate() + interval);
+  while (next.getTime() < Date.now());
+  return toLocalInput(next.toISOString());
+}
+
+function NewMeeting({ data, from, onClose }: { data: OverlegDetail; from?: MeetingSummary; onClose: () => void }) {
   const navigate = useNavigate();
-  const last = data.meetings[0];
-  const [title, setTitle] = useState(data.overleg.name);
-  const [startsAt, setStartsAt] = useState(defaultStart);
+  const last = from ?? data.meetings[0];
+  const [title, setTitle] = useState(from?.title ?? data.overleg.name);
+  const [startsAt, setStartsAt] = useState(() => (from ? nextStart(from, data.meetings) : defaultStart()));
   const [durationMin, setDurationMin] = useState(last?.durationMin ?? 60);
   const [location, setLocation] = useState(last?.location ?? "");
   const [onlineUrl, setOnlineUrl] = useState("");
-  const [copyFromId, setCopyFromId] = useState(last?.id ?? "");
+  // Waar de agenda vandaan komt: "" (leeg), "m:<id>" (vorige vergadering) of "t:<sleutel>" (standaardagenda).
+  const [source, setSource] = useState(last ? `m:${last.id}` : "");
   const [agenda, setAgenda] = useState("");
   const pasted = parseAgenda(agenda);
+  const template = AGENDA_TEMPLATES.find((t) => source === `t:${t.key}`);
   return (
-    <Modal title="Nieuwe vergadering" onClose={onClose}>
+    <Modal title={from ? "Volgende vergadering plannen" : "Nieuwe vergadering"} onClose={onClose}>
       <Form
         submitLabel="Aanmaken"
         onCancel={onClose}
@@ -62,8 +82,8 @@ function NewMeeting({ data, onClose }: { data: OverlegDetail; onClose: () => voi
               durationMin,
               location,
               onlineUrl,
-              // Een geplakte agenda gaat voor op overnemen van de vorige vergadering.
-              ...(pasted.length ? { items: pasted } : { copyFromId: copyFromId || null }),
+              // Een geplakte agenda gaat voor op een standaardagenda of overnemen van een vorige vergadering.
+              ...(pasted.length ? { items: pasted } : template ? { items: template.items } : { copyFromId: source.startsWith("m:") ? source.slice(2) : null }),
             },
           });
           navigate(`/vergaderingen/${id}`);
@@ -96,15 +116,29 @@ function NewMeeting({ data, onClose }: { data: OverlegDetail; onClose: () => voi
           <input className="input" type="url" placeholder="https://" value={onlineUrl} onChange={(e) => setOnlineUrl(e.target.value)} />
         </Field>
         <AgendaPaste value={agenda} onChange={setAgenda} label="Bestaande agenda plakken (optioneel)" />
-        {data.meetings.length > 0 && pasted.length === 0 && (
-          <Field label="Agenda overnemen van" hint="Neemt de agendapunten over, zonder notulen, stukken en besluiten.">
-            <select className="input" value={copyFromId} onChange={(e) => setCopyFromId(e.target.value)}>
-              <option value="">Niet overnemen, lege agenda</option>
-              {data.meetings.slice(0, 12).map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.title} ({new Date(m.startsAt).toLocaleDateString("nl-NL")})
-                </option>
-              ))}
+        {pasted.length === 0 && (
+          <Field
+            label="Agenda"
+            hint={template ? `${template.items.length} agendapunten als startpunt; je past ze daarna aan.` : "Overnemen neemt de agendapunten over, zonder notulen, stukken en besluiten."}
+          >
+            <select className="input" value={source} onChange={(e) => setSource(e.target.value)}>
+              <option value="">Lege agenda</option>
+              {data.meetings.length > 0 && (
+                <optgroup label="Overnemen van">
+                  {data.meetings.slice(0, 12).map((m) => (
+                    <option key={m.id} value={`m:${m.id}`}>
+                      {m.title} ({new Date(m.startsAt).toLocaleDateString("nl-NL")})
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              <optgroup label="Standaardagenda">
+                {AGENDA_TEMPLATES.map((t) => (
+                  <option key={t.key} value={`t:${t.key}`}>
+                    {t.name}
+                  </option>
+                ))}
+              </optgroup>
             </select>
           </Field>
         )}
@@ -261,7 +295,7 @@ function Members({ data, canEdit, onChanged }: { data: OverlegDetail; canEdit: b
 export default function OverlegPage() {
   const { id } = useParams();
   const user = useUser();
-  const [sp] = useSearchParams();
+  const [sp, setSp] = useSearchParams();
   const tab = TABS.some(([key]) => key === sp.get("tab")) ? sp.get("tab")! : "vergaderingen";
   const { data, loading, error, reload } = useLoad<OverlegDetail>(`/api/overleggen/${id}`);
   const decisions = useLoad<{ decisions: Decision[] }>(tab === "besluiten" ? `/api/decisions?overleg=${id}` : null);
@@ -277,6 +311,8 @@ export default function OverlegPage() {
   }, [organisationId, ensureOrg]);
 
   const canEdit = data?.role === "secretaris";
+  // Vanaf een vergadering doorgeklikt op "Volgende vergadering plannen": het formulier opent vooringevuld.
+  const planFrom = canEdit ? data?.meetings.find((m) => m.id === sp.get("nieuw")) : undefined;
   const now = Date.now() - 3 * 3600_000;
   const upcoming = (data?.meetings ?? []).filter((m) => new Date(m.startsAt).getTime() >= now).reverse();
   const past = (data?.meetings ?? []).filter((m) => new Date(m.startsAt).getTime() < now);
@@ -317,6 +353,7 @@ export default function OverlegPage() {
 
             {tab === "vergaderingen" && (
               <>
+                {!data.overleg.archived && <SuggestionsCard overlegId={data.overleg.id} isSec={canEdit} meetings={data.meetings} onPlaced={reload} />}
                 <section className="card">
                   <div className="card-head">
                     <h2 className="section-title">Gepland</h2>
@@ -393,6 +430,7 @@ export default function OverlegPage() {
             {tab === "leden" && <Members data={data} canEdit={canEdit} onChanged={reload} />}
 
             {modal === "meeting" && <NewMeeting data={data} onClose={() => setModal(null)} />}
+            {planFrom && !modal && <NewMeeting data={data} from={planFrom} onClose={() => setSp({}, { replace: true })} />}
             {modal === "edit" && (
               <EditOverleg
                 data={data}

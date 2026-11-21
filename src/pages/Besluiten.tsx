@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
+import { downloadCsv } from "../api";
 import { DecisionTable } from "../components/Records";
 import type { Decision, Overleg } from "../lib";
-import { Loader, useLoad } from "../ui";
+import { Button, Loader, useLoad } from "../ui";
 
 export default function BesluitenPage() {
   const [overlegId, setOverlegId] = useState("");
@@ -48,6 +49,21 @@ export default function BesluitenPage() {
           <input type="checkbox" checked={withdrawn} onChange={(e) => setWithdrawn(e.target.checked)} />
           Toon ingetrokken
         </label>
+        {shown.length > 0 && (
+          <Button
+            small
+            variant="ghost"
+            icon="download"
+            onClick={() =>
+              downloadCsv("besluitenlijst.csv", [
+                ["Nummer", "Datum", "Besluit", "Status", "Overleg", "Vergadering"],
+                ...shown.map((d) => [d.number, d.decidedOn, d.text, d.status, d.overlegName, d.meetingTitle]),
+              ])
+            }
+          >
+            Excel
+          </Button>
+        )}
       </div>
       <section className="card">
         <Loader loading={loading} error={error}>

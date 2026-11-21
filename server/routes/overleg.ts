@@ -5,6 +5,7 @@ import { q, q1 } from "../db";
 import { bad, forbidden, HttpError, notFound, oneOf, optStr, str, uuid } from "../http";
 import { findOrInviteUser, reinvite } from "../people";
 import { route } from "../router";
+import { withMail } from "./mail";
 
 const ROLES = ["secretaris", "deelnemer"] as const;
 
@@ -119,7 +120,7 @@ route.post("/api/overleggen/:id/members", async (c) => {
     [id, person.userId, role],
   );
   if (!added.length) throw new HttpError(409, `${person.name} neemt al deel aan dit overleg.`);
-  return person;
+  return withMail(c, person.userId, person);
 });
 
 async function requireMember(overlegId: string, userId: string) {
@@ -133,7 +134,7 @@ route.post("/api/overleggen/:id/members/:userId/invite", async (c) => {
   const userId = uuid(c.params.userId, "Gebruiker");
   await requireOverleg(c.user, id, true);
   await requireMember(id, userId);
-  return reinvite(userId, c.user.id);
+  return withMail(c, userId, await reinvite(userId, c.user.id));
 });
 
 route.put("/api/overleggen/:id/members/:userId", async (c) => {

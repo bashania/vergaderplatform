@@ -95,11 +95,21 @@ export default function Layout() {
               </NavLink>
             ))}
           {org?.role === "beheerder" && (
+            <NavLink to="/inzicht">
+              <Icon name="chart" />
+              Inzicht
+            </NavLink>
+          )}
+          {org?.role === "beheerder" && (
             <NavLink to="/organisatie">
               <Icon name="lock" />
               Toegang en beheer
             </NavLink>
           )}
+          <NavLink to="/uitleg">
+            <Icon name="help" />
+            Uitleg
+          </NavLink>
           {user.isAdmin && (
             <>
               <div className="nav-label">Platform</div>

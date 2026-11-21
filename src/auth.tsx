@@ -9,6 +9,8 @@ type Session = {
   organisations: Organisation[];
   /** Het platform heeft toegang tot een taalmodel; per organisatie staat de assistent aan of uit. */
   aiAvailable?: boolean;
+  /** Het platform kan zelf e-mail versturen (mailserver ingesteld door de platformbeheerder). */
+  mailEnabled?: boolean;
 };
 type AuthValue = Session & {
   loading: boolean;

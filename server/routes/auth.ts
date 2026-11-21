@@ -9,6 +9,7 @@ import {
   verifyPassword,
 } from "../auth";
 import { aiAvailable } from "../ai";
+import { mailEnabled } from "../mail";
 import { q, q1 } from "../db";
 import { bad, email, env, HttpError, notFound, optStr, str } from "../http";
 import { route } from "../router";
@@ -33,7 +34,7 @@ function myOrganisations(userId: string) {
 route.get(
   "/api/session",
   async (c) => {
-    const [org, anyUser, organisations, account] = await Promise.all([
+    const [org, anyUser, organisations, account, mail] = await Promise.all([
       q1<{ value: string }>(`SELECT value FROM settings WHERE key = 'orgName'`),
       c.user ? null : q1(`SELECT 1 AS x FROM users LIMIT 1`),
       c.user ? myOrganisations(c.user.id) : [],
@@ -45,10 +46,12 @@ route.get(
             [c.user.id],
           )
         : null,
+      // Kan het platform zelf mailen? Dan biedt het scherm dat aan in plaats van je eigen mailprogramma.
+      c.user ? mailEnabled() : false,
     ]);
     // strong = deze sessie is met een passkey ingelogd; alleen die opent organisaties met passkey-eis.
     const user = c.user ? { ...c.user, hasPassword: account?.hasPassword ?? false, passkeys: account?.passkeys ?? 0 } : null;
-    return { user, orgName: org?.value ?? "", setupNeeded: !c.user && !anyUser, organisations, aiAvailable: !!c.user && aiAvailable() };
+    return { user, orgName: org?.value ?? "", setupNeeded: !c.user && !anyUser, organisations, aiAvailable: !!c.user && aiAvailable(), mailEnabled: mail };
   },
   { public: true },
 );

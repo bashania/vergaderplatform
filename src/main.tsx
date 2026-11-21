@@ -15,11 +15,13 @@ import ActiesPage from "./pages/Acties";
 import BeheerPage from "./pages/Beheer";
 import BesluitenPage from "./pages/Besluiten";
 import DashboardPage from "./pages/Dashboard";
+import InzichtPage from "./pages/Inzicht";
 import LivePage from "./pages/Live";
 import { LoginPage, SetupPage, WelcomePage } from "./pages/Login";
 import MeetingPage from "./pages/Meeting";
 import OrganisatiePage from "./pages/Organisatie";
 import OverlegPage from "./pages/Overleg";
+import UitlegPage from "./pages/Uitleg";
 import OverleggenPage from "./pages/Overleggen";
 import ZoekenPage from "./pages/Zoeken";
 import { ToastProvider } from "./ui";
@@ -53,8 +55,10 @@ function App() {
             <Route path="acties" element={<ActiesPage />} />
             <Route path="zoeken" element={<ZoekenPage />} />
             <Route path="organisatie" element={<OrganisatiePage />} />
+            <Route path="inzicht" element={<InzichtPage />} />
           </Route>
           <Route path="account" element={<AccountPage />} />
+          <Route path="uitleg" element={<UitlegPage />} />
           {user.isAdmin && <Route path="beheer" element={<BeheerPage />} />}
           <Route path="*" element={<NotFound />} />
         </Route>
