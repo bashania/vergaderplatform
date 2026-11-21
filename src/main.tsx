@@ -10,7 +10,7 @@ import "@fontsource/ibm-plex-mono/latin-600.css";
 import "./styles.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth";
 import Layout, { RequireOrganisation } from "./Layout";
 import AanwezigheidPage from "./pages/Aanwezigheid";
@@ -42,9 +42,15 @@ function NotFound() {
   );
 }
 
+/** Schermen die geen inlog nodig hebben en dus niet op de inlogcontrole hoeven te wachten. */
+const PUBLIC = ["/meekijken", "/aanwezigheid"];
+
 function App() {
   const { user, loading, setupNeeded } = useAuth();
-  if (loading) return <div className="splash">Laden…</div>;
+  const { pathname } = useLocation();
+  // Een meekijker in de zaal of iemand die zich vanuit een e-mail afmeldt, ziet het scherm meteen:
+  // de inlogcontrole loopt op de achtergrond en kan na een stille periode een paar seconden duren.
+  if (loading && !PUBLIC.includes(pathname)) return <div className="splash">Laden…</div>;
   return (
     <Routes>
       {/* Uitnodigings- en resetlinks werken altijd, ook als er iemand anders is ingelogd. */}

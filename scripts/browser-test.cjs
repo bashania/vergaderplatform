@@ -104,7 +104,15 @@ const inked = (page) =>
   const guestCtx = await browser.newContext({ ...phone, locale: "nl-NL" });
   const guest = await guestCtx.newPage();
   watch(guest, "meekijker");
-  await guest.goto(`${BASE}/meekijken`);
+  // Het codeveld wacht niet op de inlogcontrole: die houden we hier vier seconden vast.
+  await guest.route("**/api/session", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 4000));
+    await route.continue().catch(() => {});
+  });
+  const opened = Date.now();
+  await guest.goto(`${BASE}/meekijken`, { waitUntil: "commit" });
+  await guest.getByLabel("Code").waitFor({ timeout: 3000 }).catch(() => {});
+  check("meekijker: het codeveld staat er zonder te wachten op de inlogcontrole", (await guest.getByLabel("Code").count()) === 1 && Date.now() - opened < 3500, `${Date.now() - opened} ms`);
   await guest.getByLabel("Code").fill(code.toLowerCase());
   await guest.getByRole("button", { name: "Meekijken" }).click();
   await guest.locator(".stage canvas:not([hidden])").waitFor({ timeout: 45000 });

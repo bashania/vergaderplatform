@@ -162,6 +162,8 @@ Een persoonlijke, geheime link (`/api/agenda/<sleutel>.ics`) die een agenda-app 
 
 Grote bibliotheken (taalmodel, MCP, mail, passkeys) worden pas geladen bij het eerste verzoek dat ze nodig heeft. Het gros van de verzoeken raakt ze niet, en de functie start daardoor merkbaar sneller op na een periode van stilte.
 
+De schermen zonder inlog (meekijken en aan- of afmelden vanuit een e-mail) wachten niet op de inlogcontrole: ze tonen hun inhoud meteen, ook als de functie na een stille periode een paar seconden nodig heeft om op te starten. Gemeten op de live site met de mobiele instelling van Lighthouse (traag 4G, processor vier keer trager): eerste beeld na 1,2 seconde, 244 kB voor het hele scherm. De bundel is daarom niet verder opgeknipt.
+
 ### Transcript en koppeling met Plaud
 
 - **Koppelen** doet elke gebruiker zelf onder Mijn account. Het platform sluit aan op de officiële MCP-server van Plaud (`mcp.plaud.ai`) met de inlogstandaard van MCP: OAuth met PKCE, waarbij het platform zich per webadres één keer als toepassing aanmeldt. Plaud documenteert deze route voor MCP-clients, niet uitdrukkelijk voor webtoepassingen; wijzigt Plaud iets, dan is plakken als tekst de uitwijk.
