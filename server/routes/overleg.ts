@@ -13,7 +13,9 @@ const ROLES = ["secretaris", "deelnemer"] as const;
 route.get("/api/overleggen", async (c) => {
   const overleggen = await q(
     `WITH ${ACC}
-     SELECT o.id, o.name, o.description, o.archived, acc.role,
+     SELECT o.id, o.name, o.description, o.archived, o.besloten, acc.role,
+            -- De naam van het overleg waar een kring bij hoort, alleen als de gebruiker dat overleg ook ziet.
+            (SELECT p.overleg_name FROM acc p WHERE p.overleg_id = o.parent_id) AS parent_name,
             (SELECT count(*)::int FROM memberships m WHERE m.overleg_id = o.id) AS member_count,
             (SELECT count(*)::int FROM actions a WHERE a.overleg_id = o.id AND a.status = 'open') AS open_actions,
             (SELECT json_build_object('id', mt.id, 'title', mt.title, 'startsAt', mt.starts_at, 'status', mt.status)
@@ -36,10 +38,47 @@ route.post("/api/overleggen", async (c) => {
   const name = str(b.name, "Naam", { max: 120 });
   const description = optStr(b.description, "Omschrijving", 1000);
   const id = randomUUID();
-  await q(`INSERT INTO overleggen (id, organisation_id, name, description) VALUES ($1, $2, $3, $4)`, [id, orgId, name, description]);
-  // De aanmaker neemt meestal zelf deel; kan daarna weer als deelnemer verwijderd worden.
-  await q(`INSERT INTO memberships (overleg_id, user_id, role) VALUES ($1, $2, 'secretaris')`, [id, c.user.id]);
+  // De aanmaker neemt meestal zelf deel; kan daarna weer als deelnemer verwijderd worden. In één opdracht,
+  // zodat een besloten overleg nooit zonder secretaris bestaat.
+  await q(
+    `WITH nieuw AS (INSERT INTO overleggen (id, organisation_id, name, description, besloten) VALUES ($1, $2, $3, $4, $5) RETURNING id)
+     INSERT INTO memberships (overleg_id, user_id, role) SELECT id, $6::uuid, 'secretaris' FROM nieuw`,
+    [id, orgId, name, description, b.besloten === true, c.user.id],
+  );
   return { id };
+});
+
+/**
+ * Besloten kring bij een overleg: een eigen, besloten overleg voor een deel van de deelnemers, bijvoorbeeld
+ * de toezichthouders zonder de bestuurder. De secretaris van het overleg maakt hem aan en wordt er zelf
+ * secretaris van. De afscherming is die van elk besloten overleg (server/access.ts): er komt geen nieuwe
+ * uitzondering bij op de plekken waar inhoud naar buiten gaat.
+ */
+route.post("/api/overleggen/:id/kring", async (c) => {
+  const id = uuid(c.params.id, "Overleg");
+  const access = await overlegAccess(c.user, id);
+  if (!access?.role) throw notFound("Overleg niet gevonden.");
+  if (access.role !== "secretaris") throw forbidden("Alleen de secretaris of beheerder kan een besloten kring maken.");
+  const parent = await q1<{ parentId: string | null; archived: boolean }>(`SELECT parent_id, archived FROM overleggen WHERE id = $1`, [id]);
+  if (parent?.parentId) throw bad("Een besloten kring kan zelf geen kring hebben.");
+  if (parent?.archived) throw bad("Dit overleg is gearchiveerd.");
+  const b = await c.body();
+  const name = str(b.name, "Naam", { max: 120 });
+  const description = optStr(b.description, "Omschrijving", 1000);
+  if (!Array.isArray(b.memberIds) || b.memberIds.length > 200) throw bad("Kies de deelnemers van de kring.");
+  const others = [...new Set(b.memberIds.map((m) => uuid(m, "Deelnemer")))].filter((m) => m !== c.user.id);
+  // Alleen wie aan het overleg deelneemt, kan in de kring.
+  const valid = await q(`SELECT user_id FROM memberships WHERE overleg_id = $1 AND user_id = ANY($2::uuid[])`, [id, others]);
+  if (valid.length !== others.length) throw bad("Een kring bestaat uit deelnemers van dit overleg.");
+  const kringId = randomUUID();
+  await q(
+    `WITH nieuw AS (INSERT INTO overleggen (id, organisation_id, name, description, besloten, parent_id)
+                    VALUES ($1, $2, $3, $4, true, $5) RETURNING id)
+     INSERT INTO memberships (overleg_id, user_id, role)
+     SELECT nieuw.id, u, CASE WHEN u = $6::uuid THEN 'secretaris' ELSE 'deelnemer' END FROM nieuw, unnest($7::uuid[]) AS u`,
+    [kringId, access.organisationId, name, description, id, c.user.id, [c.user.id, ...others]],
+  );
+  return { id: kringId };
 });
 
 route.get("/api/overleggen/:id", async (c) => {
@@ -47,11 +86,22 @@ route.get("/api/overleggen/:id", async (c) => {
   const access = await overlegAccess(c.user, id);
   if (!access?.role) throw notFound("Overleg niet gevonden.");
   const isSec = access.role === "secretaris";
-  const [overleg, members, meetings, documents] = await Promise.all([
+  // Een ander overleg (waar deze kring bij hoort, of een kring van dit overleg) is alleen te zien voor wie er zelf bij mag.
+  const reachable = `(EXISTS (SELECT 1 FROM memberships m WHERE m.overleg_id = k.id AND m.user_id = $2) OR (NOT k.besloten AND $3::boolean))`;
+  const [overleg, parent, kringen, members, meetings, documents] = await Promise.all([
     q1(
-      `SELECT o.id, o.name, o.description, o.archived, o.organisation_id, org.name AS organisation_name
+      `SELECT o.id, o.name, o.description, o.archived, o.besloten, (o.parent_id IS NOT NULL) AS is_kring, o.organisation_id, org.name AS organisation_name
          FROM overleggen o JOIN organisations org ON org.id = o.organisation_id WHERE o.id = $1`,
       [id],
+    ),
+    q1(
+      `SELECT k.id, k.name FROM overleggen o JOIN overleggen k ON k.id = o.parent_id WHERE o.id = $1 AND ${reachable}`,
+      [id, c.user.id, access.orgAdmin],
+    ),
+    q(
+      `SELECT k.id, k.name, (SELECT count(*)::int FROM memberships m WHERE m.overleg_id = k.id) AS member_count
+         FROM overleggen k WHERE k.parent_id = $1 AND NOT k.archived AND ${reachable} ORDER BY lower(k.name)`,
+      [id, c.user.id, access.orgAdmin],
     ),
     q(
       `SELECT u.id, u.name, u.email, m.role, u.active, ${activated("u")} AS activated
@@ -77,7 +127,7 @@ route.get("/api/overleggen/:id", async (c) => {
       [id],
     ),
   ]);
-  return { overleg, role: access.role, orgAdmin: access.orgAdmin, members, meetings, documents };
+  return { overleg, role: access.role, memberRole: access.memberRole, orgAdmin: access.orgAdmin, parent, kringen, members, meetings, documents };
 });
 
 route.patch("/api/overleggen/:id", async (c) => {
@@ -98,12 +148,39 @@ route.patch("/api/overleggen/:id", async (c) => {
     if (!access.orgAdmin) throw forbidden("Alleen een beheerder van de organisatie kan een overleg archiveren.");
     set("archived", b.archived === true);
   }
+  if (b.besloten !== undefined && (b.besloten === true) !== access.besloten) {
+    // Alleen wie zelf als secretaris deelneemt: een beheerder van de organisatie zou zichzelf anders buitensluiten,
+    // of een besloten overleg voor het beheer openzetten zonder dat de deelnemers dat weten.
+    if (access.memberRole !== "secretaris") {
+      throw forbidden("Alleen een secretaris die zelf aan dit overleg deelneemt, kan het besloten maken of weer openstellen.");
+    }
+    set("besloten", b.besloten === true);
+  }
   if (!sets.length) throw bad("Geen wijzigingen.");
   await q(`UPDATE overleggen SET ${sets.join(", ")} WHERE id = $1`, vals);
   return { ok: true };
 });
 
 // ---------- deelnemers ----------
+
+/**
+ * In een besloten overleg kan het beheer van de organisatie niet bijspringen: er moet een actieve
+ * secretaris overblijven. (Valt de laatste toch weg, bijvoorbeeld door een geblokkeerd account, dan
+ * wijst een beheerder een nieuwe aan; zie routes/organisations.ts.)
+ */
+async function assertSecretarisRemains(overlegId: string, userId: string) {
+  const row = await q1<{ besloten: boolean; isSec: boolean; others: number }>(
+    `SELECT o.besloten,
+            EXISTS (SELECT 1 FROM memberships m WHERE m.overleg_id = o.id AND m.user_id = $2 AND m.role = 'secretaris') AS is_sec,
+            (SELECT count(*)::int FROM memberships m JOIN users u ON u.id = m.user_id
+              WHERE m.overleg_id = o.id AND m.role = 'secretaris' AND m.user_id <> $2 AND u.active) AS others
+       FROM overleggen o WHERE o.id = $1`,
+    [overlegId, userId],
+  );
+  if (row?.besloten && row.isSec && row.others === 0) {
+    throw new HttpError(409, "Wijs eerst een andere secretaris aan. In een besloten overleg kan het beheer van de organisatie dat niet overnemen.");
+  }
+}
 
 /**
  * Deelnemer toevoegen op e-mailadres. Bestaat het account al, dan wordt het gekoppeld;
@@ -144,6 +221,7 @@ route.put("/api/overleggen/:id/members/:userId", async (c) => {
   const role = oneOf((await c.body()).role, "Rol", ROLES);
   // Alleen de rol van een bestaande deelnemer wijzigen; toevoegen gaat op e-mailadres.
   await requireMember(id, userId);
+  if (role !== "secretaris") await assertSecretarisRemains(id, userId);
   await q(`UPDATE memberships SET role = $3 WHERE overleg_id = $1 AND user_id = $2`, [id, userId, role]);
   return { ok: true };
 });
@@ -152,6 +230,7 @@ route.delete("/api/overleggen/:id/members/:userId", async (c) => {
   const id = uuid(c.params.id, "Overleg");
   const userId = uuid(c.params.userId, "Gebruiker");
   await requireOverleg(c.user, id, true);
+  await assertSecretarisRemains(id, userId);
   await q(`DELETE FROM memberships WHERE overleg_id = $1 AND user_id = $2`, [id, userId]);
   return { ok: true };
 });

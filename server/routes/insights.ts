@@ -1,5 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { ACC, accParams, requireOrgAdmin, requireOrgId, VISIBLE } from "../access";
+import { ACC, accParams, openOrMember, requireOrgAdmin, requireOrgId, VISIBLE } from "../access";
 import { aiAvailable, ask, requireAi } from "../ai";
 import { fakeAnswer } from "../ai-fake";
 import { q, q1 } from "../db";
@@ -43,10 +43,10 @@ route.get("/api/organisations/:id/insights", async (c) => {
          FROM overleggen o
          LEFT JOIN meetings mt ON mt.overleg_id = o.id AND mt.status <> 'concept' AND mt.starts_at >= (SELECT start FROM p) AND mt.starts_at <= now()
          LEFT JOIN LATERAL (SELECT sum(i.spent_sec) AS spent, sum(i.duration_min) AS planned FROM agenda_items i WHERE i.meeting_id = mt.id) t ON true
-        WHERE o.organisation_id = $1 AND NOT o.archived
+        WHERE o.organisation_id = $1 AND NOT o.archived AND ${openOrMember("$3")}
         GROUP BY o.id, o.name
         ORDER BY lower(o.name)`,
-      [id, months],
+      [id, months, c.user.id],
     ),
     q(
       `SELECT u.id, u.name, count(*)::int AS open,
@@ -55,11 +55,11 @@ route.get("/api/organisations/:id/insights", async (c) => {
          JOIN users u ON u.id = a.owner_id
          JOIN overleggen o ON o.id = a.overleg_id
          JOIN meetings mt ON mt.id = a.meeting_id
-        WHERE o.organisation_id = $1 AND NOT o.archived AND a.status = 'open' AND mt.status <> 'concept'
+        WHERE o.organisation_id = $1 AND NOT o.archived AND a.status = 'open' AND mt.status <> 'concept' AND ${openOrMember("$2")}
         GROUP BY u.id, u.name
         ORDER BY late DESC, open DESC, lower(u.name)
         LIMIT 40`,
-      [id],
+      [id, c.user.id],
     ),
   ]);
   return { months, hourlyRate: org?.hourlyRate ?? null, overleggen, people };
@@ -74,7 +74,7 @@ route.get("/api/organisations/:id/start", async (c) => {
   const [row, mail] = await Promise.all([
     q1<{ overleggen: number; firstOverlegId: string | null; members: number; published: number; calendar: boolean; aiEnabled: boolean }>(
       `SELECT (SELECT count(*)::int FROM overleggen o WHERE o.organisation_id = $1 AND NOT o.archived) AS overleggen,
-              (SELECT o.id FROM overleggen o WHERE o.organisation_id = $1 AND NOT o.archived ORDER BY o.created_at LIMIT 1) AS first_overleg_id,
+              (SELECT o.id FROM overleggen o WHERE o.organisation_id = $1 AND NOT o.archived AND ${openOrMember("$2")} ORDER BY o.created_at LIMIT 1) AS first_overleg_id,
               (SELECT count(DISTINCT m.user_id)::int FROM memberships m JOIN overleggen o ON o.id = m.overleg_id
                 WHERE o.organisation_id = $1 AND m.user_id <> $2) AS members,
               (SELECT count(*)::int FROM meetings mt JOIN overleggen o ON o.id = mt.overleg_id

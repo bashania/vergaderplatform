@@ -582,6 +582,24 @@ textarea.input {
   height: 18px;
   accent-color: var(--accent);
 }
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.choices legend {
+  padding: 0;
+  margin-bottom: 6px;
+  font-size: 0.87rem;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.choices .check {
+  font-weight: 500;
+}
 .notice {
   padding: 10px 14px;
   border-radius: 8px;

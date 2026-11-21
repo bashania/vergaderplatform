@@ -29,7 +29,7 @@ import {
   type MeetingDetail,
   type MeetingStatus,
 } from "../lib";
-import { Button, Empty, Field, Form, Icon, Loader, Modal, useLoad, useRun } from "../ui";
+import { BeslotenBadge, Button, Empty, Field, Form, Icon, Loader, Modal, useLoad, useRun } from "../ui";
 
 type ModalState =
   | { type: "meeting" }
@@ -513,7 +513,8 @@ export default function MeetingPage() {
       <div className="page-head">
         <div>
           <div className="crumb no-print">
-            <Link to="/overleggen">Overleggen</Link> › <Link to={`/overleggen/${meeting.overlegId}`}>{meeting.overlegName}</Link>
+            <Link to="/overleggen">Overleggen</Link> › <Link to={`/overleggen/${meeting.overlegId}`}>{meeting.overlegName}</Link>{" "}
+            {meeting.besloten && <BeslotenBadge />}
           </div>
           <div className="row">
             <h1>{meeting.title}</h1>

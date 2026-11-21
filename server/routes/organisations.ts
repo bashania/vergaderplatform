@@ -96,7 +96,10 @@ route.get("/api/organisations/:id/people", async (c) => {
     `SELECT u.id, u.name, u.email, u.active, ${activated("u")} AS activated,
             EXISTS (SELECT 1 FROM organisation_admins a WHERE a.organisation_id = $1 AND a.user_id = u.id) AS is_admin,
             EXISTS (SELECT 1 FROM passkeys pk WHERE pk.user_id = u.id) AS has_passkey,
-            COALESCE((SELECT json_agg(json_build_object('id', o.id, 'name', o.name, 'role', m.role) ORDER BY lower(o.name))
+            -- 'open': de beheerder kan dit overleg zelf openen (niet besloten, of hij neemt er zelf aan deel).
+            COALESCE((SELECT json_agg(json_build_object('id', o.id, 'name', o.name, 'role', m.role, 'besloten', o.besloten,
+                                        'open', NOT o.besloten OR EXISTS (SELECT 1 FROM memberships x WHERE x.overleg_id = o.id AND x.user_id = $2))
+                                      ORDER BY lower(o.name))
                         FROM memberships m JOIN overleggen o ON o.id = m.overleg_id
                        WHERE o.organisation_id = $1 AND m.user_id = u.id), '[]'::json) AS overleggen
        FROM users u
@@ -104,7 +107,7 @@ route.get("/api/organisations/:id/people", async (c) => {
          OR EXISTS (SELECT 1 FROM memberships m JOIN overleggen o ON o.id = m.overleg_id
                      WHERE o.organisation_id = $1 AND m.user_id = u.id)
       ORDER BY lower(u.name)`,
-    [id],
+    [id, c.user.id],
   );
   return { people };
 });
@@ -170,4 +173,58 @@ route.post("/api/organisations/:id/people/:userId/invite", async (c) => {
   );
   if (!inOrg) throw new HttpError(404, "Persoon niet gevonden.");
   return withMail(c, userId, await reinvite(userId, c.user.id));
+});
+
+// ---------- besloten overleggen ----------
+
+/**
+ * Besloten overleggen van de organisatie, voor de beheerder: dat ze bestaan, wie eraan deelneemt en wie
+ * de secretaris is. Niet de inhoud; daar geeft het beheer geen toegang toe (server/access.ts).
+ */
+route.get("/api/organisations/:id/besloten", async (c) => {
+  const id = uuid(c.params.id, "Organisatie");
+  await requireOrgAdmin(c.user, id);
+  const overleggen = await q(
+    `SELECT o.id, o.name, o.archived,
+            (SELECT p.name FROM overleggen p WHERE p.id = o.parent_id) AS parent_name,
+            (SELECT count(*)::int FROM memberships m WHERE m.overleg_id = o.id) AS member_count,
+            COALESCE((SELECT json_agg(u.name ORDER BY lower(u.name)) FROM memberships m JOIN users u ON u.id = m.user_id
+                       WHERE m.overleg_id = o.id AND m.role = 'secretaris' AND u.active), '[]'::json) AS secretarissen,
+            EXISTS (SELECT 1 FROM memberships m WHERE m.overleg_id = o.id AND m.user_id = $2) AS mine
+       FROM overleggen o
+      WHERE o.organisation_id = $1 AND o.besloten
+      ORDER BY o.archived, lower(o.name)`,
+    [id, c.user.id],
+  );
+  return { overleggen };
+});
+
+/**
+ * Herstel: heeft een besloten overleg geen actieve secretaris meer (account geblokkeerd of uit de
+ * organisatie gehaald), dan kan niemand het nog beheren. Alleen dan wijst de beheerder een nieuwe
+ * secretaris aan. Het staat in het logboek van het platform.
+ */
+route.post("/api/organisations/:id/besloten/:overlegId/secretaris", async (c) => {
+  const id = uuid(c.params.id, "Organisatie");
+  const overlegId = uuid(c.params.overlegId, "Overleg");
+  await requireOrgAdmin(c.user, id);
+  const userId = uuid((await c.body()).userId, "Persoon");
+  const row = await q1<{ secretarissen: number; inOrg: boolean }>(
+    `SELECT (SELECT count(*)::int FROM memberships m JOIN users u ON u.id = m.user_id
+              WHERE m.overleg_id = o.id AND m.role = 'secretaris' AND u.active) AS secretarissen,
+            (EXISTS (SELECT 1 FROM organisation_admins a WHERE a.organisation_id = $1 AND a.user_id = $3)
+             OR EXISTS (SELECT 1 FROM memberships m JOIN overleggen x ON x.id = m.overleg_id
+                         WHERE x.organisation_id = $1 AND m.user_id = $3)) AS in_org
+       FROM overleggen o WHERE o.id = $2 AND o.organisation_id = $1 AND o.besloten`,
+    [id, overlegId, userId],
+  );
+  if (!row) throw new HttpError(404, "Overleg niet gevonden.");
+  if (row.secretarissen > 0) throw new HttpError(409, "Dit besloten overleg heeft een secretaris. Die beheert de deelnemers.");
+  if (!row.inOrg) throw new HttpError(404, "Persoon niet gevonden.");
+  await q(
+    `INSERT INTO memberships (overleg_id, user_id, role) VALUES ($1, $2, 'secretaris')
+     ON CONFLICT (overleg_id, user_id) DO UPDATE SET role = 'secretaris'`,
+    [overlegId, userId],
+  );
+  return { ok: true };
 });
