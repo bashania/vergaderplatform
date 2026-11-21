@@ -203,6 +203,13 @@ scripts/start-test-server.sh
 npm run test:e2e
 ```
 
+Daarnaast draait GitHub de schermen in drie browsers: Chromium, WebKit (de browsermotor van Safari) en Firefox. De test (`scripts/browser-test.cjs`) opent drie schermen tegelijk: de secretaris zet een pdf op het scherm en bladert, het presentatiescherm volgt, en een meekijker zonder account typt de code op een telefoonformaat. Zelf draaien, na het starten van de testserver:
+
+```bash
+node scripts/film/seed-demo.cjs > demo.json
+BROWSER=chromium node scripts/browser-test.cjs demo.json
+```
+
 `scripts/start-test-server.sh` zet de testinstellingen (`scripts/test.env`) als `.env`, start de lokale server met een lege database en voert de migraties uit. De test verwacht een lege database: start de server opnieuw voor een volgende ronde.
 
 De test start zelf een nagebouwde mailserver (poort 2525) en een nagebouwde Plaud-server (poort 8899); die poorten moeten vrij zijn. De hele test duurt enkele minuten.
