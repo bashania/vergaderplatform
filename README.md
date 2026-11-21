@@ -182,7 +182,7 @@ Het product heet Kortweg. De huisstijl is vastgelegd in het Kortweg Design Syste
 - **Vorm:** knoppen en labels zijn pillen, kaarten hebben ronde hoeken, een actie tik je dicht in een rondje. Geen schaduwen, geen verlopen.
 - **E-mail:** de opmaak staat met vaste kleuren in `server/mail.ts`, omdat e-mailprogramma's geen variabelen en geen eigen letters laden.
 - **Schrijven:** kort, in de je-vorm. Een samenvatting mag openen met "Kortweg:", hooguit één keer per scherm of e-mail.
-- **Instructiefilm:** `public/instructiefilm.mp4` is nog opgenomen in de oude vormgeving. Het script kent de nieuwe kleuren al; neem de film opnieuw op (zie verderop).
+- **Instructiefilm:** `public/instructiefilm.mp4` is opgenomen in deze huisstijl. Verandert de vormgeving of een scherm dat in de film zit, neem hem dan opnieuw op (zie verderop).
 
 ### Naam wijzigen
 
