@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, errorText } from "../api";
-import { JoinStrip, Screen, useNow, useWakeLock, type ScreenData } from "../components/Screen";
+import { Screen, useNow, useWakeLock, type ScreenData } from "../components/Screen";
 import { Button, Icon } from "../ui";
 
 /**
@@ -83,7 +83,6 @@ export default function SchermPage() {
           </>
         )
       }
-      footer={data.watch && data.live.startedAt ? <JoinStrip watch={data.watch} /> : undefined}
     />
   );
 }

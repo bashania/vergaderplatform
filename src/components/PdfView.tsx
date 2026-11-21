@@ -23,7 +23,20 @@ function pdfjs(): Promise<Lib> {
  * Eén pagina van een pdf, passend in de beschikbare ruimte. `fit` "page" toont de hele pagina,
  * "width" vult de breedte (dan scrolt het vak eromheen).
  */
-export function PdfView({ data, page, fit, onPages }: { data: Uint8Array; page: number; fit: "page" | "width"; onPages?: (pages: number) => void }) {
+export function PdfView({
+  data,
+  page,
+  fit,
+  onPages,
+  fallback,
+}: {
+  data: Uint8Array;
+  page: number;
+  fit: "page" | "width";
+  onPages?: (pages: number) => void;
+  /** Wat er komt te staan als de pdf hier niet te tekenen is (een oudere browser, een beschadigd bestand). */
+  fallback?: React.ReactNode;
+}) {
   const box = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
@@ -99,7 +112,7 @@ export function PdfView({ data, page, fit, onPages }: { data: Uint8Array; page: 
   return (
     <div className="pdf-box" ref={box}>
       {error ? (
-        <div className="stage-msg">Dit pdf-bestand kan niet worden getoond. Download het stuk om het te lezen.</div>
+        <div className="stage-msg">{fallback ?? "Dit pdf-bestand kan niet worden getoond."}</div>
       ) : (
         <>
           {!pdf && <div className="stage-msg">Pdf openen…</div>}

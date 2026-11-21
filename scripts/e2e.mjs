@@ -2,6 +2,7 @@
 //   BASE=http://localhost:8888 SETUP_CODE=lokale-testcode node scripts/e2e.mjs
 import { createHash, randomBytes } from "node:crypto";
 import { writeFileSync } from "node:fs";
+import { createServer } from "node:net";
 import { simpleParser } from "mailparser";
 import { SMTPServer } from "smtp-server";
 import { startFakePlaud } from "./fake-plaud.mjs";
@@ -72,6 +73,15 @@ class Client {
 
 const sha = (b) => createHash("sha256").update(b).digest("hex");
 const step = (s) => console.log(`\n${s}`);
+/** Een poort waar zeker niets luistert: even openen, het nummer onthouden en weer sluiten. Een vast nummer kan op een andere machine in gebruik zijn. */
+const closedPort = () =>
+  new Promise((resolve) => {
+    const probe = createServer();
+    probe.listen(0, "127.0.0.1", () => {
+      const { port } = probe.address();
+      probe.close(() => resolve(port));
+    });
+  });
 
 const admin = new Client();
 const adminCreds = { email: "beheer@test.example", password: "een-lang-testwachtwoord" };
@@ -851,7 +861,7 @@ step("5d. Agenda-abonnement, punten aandragen en e-mail");
   check("testmail", (await admin.post("/api/admin/mail/test")).status === 200 && (await arrived(1)) === 1 && to(inbox[0]) === adminCreds.email && inbox[0].subject.includes("Testmail"));
   check("aangemeld bij de mailserver met het opgeslagen wachtwoord", logins.includes("mailer:geheim-wachtwoord"));
   check("afzender zoals ingesteld", inbox[0].from.value[0].address === "vergaderen@test.example" && inbox[0].from.value[0].name === "Vergaderen");
-  await admin.put("/api/admin/mail", { ...settings, port: 2526, pass: "" });
+  await admin.put("/api/admin/mail", { ...settings, host: "127.0.0.1", port: await closedPort(), pass: "" });
   const failed = await admin.post("/api/admin/mail/test");
   check("onbereikbare mailserver geeft de melding door", failed.status === 502 && failed.data.error.includes("mailserver"), JSON.stringify(failed));
   await admin.put("/api/admin/mail", { ...settings, pass: "" });
@@ -1041,7 +1051,8 @@ step("5f. Stemrondes en systeemcontrole");
   check("dagelijkse taak heeft een spoor achtergelaten", off.daily.status === "ok" && off.daily.detail.includes("herinneringen"), off.daily.detail);
   await admin.put("/api/admin/mail", { host: "localhost", port: 2525, security: "geen", user: "mailer", pass: "geheim", fromAddress: "vergaderen@test.example" });
   check("mailserver bereikbaar: e-mail werkt", byKey(await admin.post("/api/admin/system/check")).mail.status === "ok");
-  await admin.put("/api/admin/mail", { host: "localhost", port: 2526, security: "geen", user: "mailer", pass: "", fromAddress: "vergaderen@test.example" });
+  const moved = await admin.put("/api/admin/mail", { host: "127.0.0.1", port: await closedPort(), security: "geen", user: "mailer", pass: "", fromAddress: "vergaderen@test.example" });
+  check("mailinstellingen gewijzigd naar een onbereikbare server", moved.status === 200, JSON.stringify(moved));
   const broken = byKey(await admin.post("/api/admin/system/check"));
   check("onbereikbare mailserver wordt gemeld", broken.mail.status === "fout" && broken.mail.detail.includes("mailserver"), broken.mail.detail);
   await plaud.close();
