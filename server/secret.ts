@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { env, HttpError } from "./http";
 
 /**
@@ -32,3 +32,17 @@ export function open(sealed: string): string {
 
 /** Sleutel voor interne taken (de dagelijkse herinneringen): afgeleid, zodat TOKEN_KEY zelf nergens heen gaat. */
 export const taskKey = (name: string) => createHash("sha256").update(`${name}:${env("TOKEN_KEY") ?? ""}`).digest("hex");
+
+/**
+ * Handtekening onder gegevens in een link (aan- of afmelden vanuit de mail): wie de link heeft,
+ * kan precies dat ene doen, zonder in te loggen. Per doel een eigen afgeleide sleutel.
+ */
+export function sign(purpose: string, data: string): string {
+  return createHmac("sha256", taskKey(purpose)).update(data).digest("base64url").slice(0, 32);
+}
+
+export function verify(purpose: string, data: string, signature: string): boolean {
+  const expected = Buffer.from(sign(purpose, data));
+  const given = Buffer.from(signature);
+  return hasSecretKey() && expected.length === given.length && timingSafeEqual(expected, given);
+}

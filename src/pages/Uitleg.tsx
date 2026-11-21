@@ -36,7 +36,10 @@ export default function UitlegPage() {
               Op het <Link to="/">Overzicht</Link> staan je komende vergaderingen. Klik een vergadering aan voor de agenda; de stukken staan bij het
               agendapunt waar ze bij horen. Een pdf opent direct in je browser.{ai ? " Met de knop Samenvatting bij een stuk lees je eerst de kern." : ""}
             </p>
-            <p>Geef bovenaan de vergadering aan of je erbij bent. De secretaris ziet dat op de presentielijst.</p>
+            <p>
+              Geef bovenaan de vergadering aan of je erbij bent. De secretaris ziet dat op de presentielijst.
+              {mailEnabled ? " In de e-mail met de agenda en in de herinnering kan dat ook, met één klik en zonder in te loggen." : ""}
+            </p>
           </Topic>
           <Topic title="Vergaderingen in je eigen agenda">
             <p>
@@ -54,6 +57,12 @@ export default function UitlegPage() {
             <p>
               Is de vergadering begonnen, dan staat er op het Overzicht en bij de vergadering een knop om mee te lopen. Je ziet steeds het punt dat aan de
               orde is, met de stukken erbij. Het scherm wisselt vanzelf mee.
+            </p>
+          </Topic>
+          <Topic title="Stemmen buiten de vergadering">
+            <p>
+              Soms kan een besluit niet wachten. De secretaris legt dan een voorstel voor in een stemronde. Je vindt hem op het Overzicht en bij het overleg,
+              op het tabblad Stemrondes, en stemt met één klik: akkoord, niet akkoord of onthouding. Iedereen in het overleg ziet wie wat heeft gestemd.
             </p>
           </Topic>
           <Topic title="Je acties bijhouden">
@@ -107,6 +116,13 @@ export default function UitlegPage() {
               <li>Verwijder het transcript zodra de notulen zijn vastgesteld.</li>
             </ol>
           </Topic>
+          <Topic title="Een besluit nemen zonder vergadering">
+            <p>
+              Open bij het overleg het tabblad Stemrondes en klik op Nieuwe stemronde. Formuleer het voorstel als het besluit dat je wilt nemen. Hebben
+              genoeg deelnemers gestemd, dan sluit je de ronde en stel je de uitkomst vast. Een aangenomen voorstel leg je vast bij een vergadering; het
+              krijgt dan een nummer en staat met de stemverhouding in de besluitenlijst.
+            </p>
+          </Topic>
           <Topic title="De volgende vergadering plannen">
             <p>
               Klik bij een vergadering op Volgende vergadering plannen. Datum, tijd, duur, plaats en agenda zijn dan al ingevuld, in het ritme van de vorige
@@ -129,6 +145,13 @@ export default function UitlegPage() {
                 van deze organisatie.
               </p>
             </Topic>
+            <Topic title="Vertrouwelijke onderwerpen">
+              <p>
+                Wie deelneemt aan een overleg, ziet alles van dat overleg. Moet een onderwerp in kleinere kring blijven (personeelszaken, een overname),
+                maak daar dan een eigen overleg voor met alleen die deelnemers. Zo kan er niets per ongeluk bij de verkeerde mensen terechtkomen: niet in de
+                agenda, de stukken, de zoekresultaten of de e-mail.
+              </p>
+            </Topic>
             <Topic title="Beveiliging en de AI-assistent">
               <p>
                 Onder Toegang en beheer stel je een passkey verplicht voor vertrouwelijke overleggen en zet je de AI-assistent aan of uit. Staat de assistent
@@ -149,6 +172,7 @@ export default function UitlegPage() {
                   testmail. Daarna verstuurt het platform uitnodigingen, agenda's, verslagen en herinneringen. Zonder mailserver blijft alles werken; links
                   kopieer je dan zelf.
                 </p>
+                <p>Met de Systeemcontrole op dezelfde pagina zie je in één keer of de database, de AI-assistent, de mailserver, Plaud en de dagelijkse herinneringen werken.</p>
               </Topic>
             )}
           </div>

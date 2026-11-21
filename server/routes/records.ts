@@ -19,8 +19,12 @@ route.post("/api/meetings/:id/decisions", async (c) => {
   const text = str(b.text, "Besluit", { max: 5000 });
   const agendaItemId = optUuid(b.agendaItemId, "Agendapunt");
   await checkItem(meetingId, agendaItemId);
-  // Nummer uitgeven en besluit opslaan in één statement: geen dubbele nummers bij gelijktijdig invoeren.
-  const row = await q1<{ id: string; number: string }>(
+  return insertDecision(meeting.overlegId, meetingId, agendaItemId, text, c.user.id);
+});
+
+/** Nummer uitgeven en besluit opslaan in één statement: geen dubbele nummers bij gelijktijdig invoeren. */
+export function insertDecision(overlegId: string, meetingId: string, agendaItemId: string | null, text: string, userId: string) {
+  return q1<{ id: string; number: string }>(
     `WITH m AS (
        SELECT (starts_at AT TIME ZONE 'Europe/Amsterdam')::date AS d FROM meetings WHERE id = $2
      ), c AS (
@@ -32,10 +36,9 @@ route.post("/api/meetings/:id/decisions", async (c) => {
      INSERT INTO decisions (id, overleg_id, meeting_id, agenda_item_id, number, text, decided_on, created_by)
      SELECT $3, $1, $2, $4, c.year::text || '-' || lpad(c.last::text, 3, '0'), $5, m.d, $6 FROM c, m
      RETURNING id, number`,
-    [meeting.overlegId, meetingId, randomUUID(), agendaItemId, text, c.user.id],
+    [overlegId, meetingId, randomUUID(), agendaItemId, text, userId],
   );
-  return row;
-});
+}
 
 async function loadDecision(id: string) {
   const d = await q1<{ id: string; meetingId: string }>(`SELECT id, meeting_id FROM decisions WHERE id = $1`, [id]);
@@ -203,7 +206,7 @@ route.get("/api/actions", async (c) => {
 
 route.get("/api/dashboard", async (c) => {
   const p = accParams(c);
-  const [upcoming, myActions, recentDecisions, recentDocuments] = await Promise.all([
+  const [upcoming, myActions, recentDecisions, recentDocuments, openBallots] = await Promise.all([
     q(
       `WITH ${ACC}
        SELECT mt.id, mt.title, mt.starts_at, mt.duration_min, mt.location, mt.status, mt.overleg_id, acc.overleg_name,
@@ -245,8 +248,19 @@ route.get("/api/dashboard", async (c) => {
         ORDER BY d.uploaded_at DESC LIMIT 8`,
       p,
     ),
+    // Lopende stemrondes in overleggen waar je deelnemer bent en nog niet hebt gestemd.
+    q(
+      `WITH ${ACC}
+       SELECT b.id, b.title, b.closes_on::text AS closes_on, b.overleg_id, acc.overleg_name
+         FROM ballots b JOIN acc ON acc.overleg_id = b.overleg_id
+        WHERE b.status = 'open' AND NOT acc.archived
+          AND EXISTS (SELECT 1 FROM memberships m WHERE m.overleg_id = b.overleg_id AND m.user_id = $1::uuid)
+          AND NOT EXISTS (SELECT 1 FROM ballot_votes v WHERE v.ballot_id = b.id AND v.user_id = $1::uuid)
+        ORDER BY b.closes_on NULLS LAST, b.created_at`,
+      p,
+    ),
   ]);
-  return { upcoming, myActions, recentDecisions, recentDocuments };
+  return { upcoming, myActions, recentDecisions, recentDocuments, openBallots };
 });
 
 // ---------- zoeken ----------

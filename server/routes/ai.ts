@@ -256,40 +256,45 @@ route.get("/api/organisations/:id/ai", async (c) => {
   return { enabled: org?.aiEnabled ?? false, available: aiAvailable(), month: usage ?? { calls: 0, inputTokens: 0, outputTokens: 0 } };
 });
 
-/** Verbindingstest voor de platformbeheerder: één klein verzoek, met de technische fout als het misgaat. */
-route.post(
-  "/api/admin/ai/test",
-  async (c) => {
-    if (!aiAvailable()) {
-      return { ok: false, model: aiModel(), error: "Geen toegang tot een taalmodel gevonden. Op Netlify zet AI Gateway die klaar; controleer of AI-functies voor dit team aan staan." };
-    }
-    const t0 = Date.now();
-    try {
-      const { text, model } = await ask(
-        {
-          kind: "test",
-          organisationId: null,
-          userId: c.user.id,
-          system: "Je bent een verbindingstest.",
-          content: 'Zet in het veld "antwoord" alleen het woord: werkt',
-          schema: {
-            type: "object",
-            properties: { antwoord: { type: "string" } },
-            required: ["antwoord"],
-            additionalProperties: false,
-          },
-          maxTokens: 2000,
-          fake: () => '{"antwoord":"werkt"}',
+/**
+ * Verbindingstest: één klein verzoek over dezelfde route als de echte verzoeken (model, inspanning,
+ * gestructureerd antwoord), met de technische fout als het misgaat.
+ */
+export async function aiSelfTest(userId: string): Promise<{ ok: boolean; available: boolean; model: string; ms?: number; reply?: string; error?: string }> {
+  if (!aiAvailable()) {
+    return {
+      ok: false,
+      available: false,
+      model: aiModel(),
+      error: "Geen toegang tot een taalmodel gevonden. Op Netlify zet AI Gateway die klaar; controleer of AI-functies voor dit team aan staan.",
+    };
+  }
+  const t0 = Date.now();
+  try {
+    const { text, model } = await ask(
+      {
+        kind: "test",
+        organisationId: null,
+        userId,
+        system: "Je bent een verbindingstest.",
+        content: 'Zet in het veld "antwoord" alleen het woord: werkt',
+        schema: {
+          type: "object",
+          properties: { antwoord: { type: "string" } },
+          required: ["antwoord"],
+          additionalProperties: false,
         },
-        true,
-      );
-      // Gestructureerd antwoord, net als bij de voorstellen: zo test de knop ook dat onderdeel.
-      const reply = String((JSON.parse(text) as { antwoord?: unknown }).antwoord ?? "").slice(0, 200);
-      return { ok: true, model, ms: Date.now() - t0, reply };
-    } catch (e) {
-      if (e instanceof HttpError) throw e;
-      return { ok: false, model: aiModel(), ms: Date.now() - t0, error: aiErrorDetail(e) };
-    }
-  },
-  { admin: true },
-);
+        maxTokens: 2000,
+        fake: () => '{"antwoord":"werkt"}',
+      },
+      true,
+    );
+    const reply = String((JSON.parse(text) as { antwoord?: unknown }).antwoord ?? "").slice(0, 200);
+    return { ok: true, available: true, model, ms: Date.now() - t0, reply };
+  } catch (e) {
+    // Ook een bereikte limiet is hier gewoon een uitkomst van de test.
+    return { ok: false, available: true, model: aiModel(), ms: Date.now() - t0, error: e instanceof HttpError ? e.message : aiErrorDetail(e) };
+  }
+}
+
+route.post("/api/admin/ai/test", async (c) => aiSelfTest(c.user.id), { admin: true });
