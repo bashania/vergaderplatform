@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
-import { Button, Empty, Loader, useLoad, useRun } from "../ui";
+import { Button, Empty, Loader, TableWrap, useLoad, useRun } from "../ui";
 
 type Row = {
   id: string;
@@ -99,7 +99,7 @@ export default function InzichtPage() {
                 <h2 className="section-title">Per overleg</h2>
               </div>
               {rows.length ? (
-                <div className="table-wrap">
+                <TableWrap label="Per overleg">
                   <table className="table">
                     <thead>
                       <tr>
@@ -133,7 +133,7 @@ export default function InzichtPage() {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </TableWrap>
               ) : (
                 <Empty title="Nog geen overleggen" />
               )}
@@ -145,7 +145,7 @@ export default function InzichtPage() {
                 <Link to="/acties">Alle acties</Link>
               </div>
               {data.people.length ? (
-                <div className="table-wrap">
+                <TableWrap label="Openstaande acties per persoon">
                   <table className="table">
                     <thead>
                       <tr>
@@ -164,7 +164,7 @@ export default function InzichtPage() {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </TableWrap>
               ) : (
                 <Empty title="Geen openstaande acties" />
               )}

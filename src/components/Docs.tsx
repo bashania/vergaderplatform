@@ -49,32 +49,35 @@ function DocRow({ doc, canManage, onChanged, extra }: { doc: Doc; canManage: boo
           </div>
         )}
       </div>
-      {extra}
-      {showSummary && (
-        <Button variant="ghost" small icon="spark" className="no-print" title="Samenvatting door de AI-assistent" aria-label="Samenvatting" onClick={() => setSummary(true)}>
-          <span className="doc-label">Samenvatting</span>
-        </Button>
-      )}
-      {direct ? (
-        <a className="btn ghost icon no-print" href={fileUrl(doc, true)} aria-label={`Download ${doc.name}`} title="Downloaden">
-          <Icon name="download" size={17} />
-        </a>
-      ) : (
-        <Button variant="ghost" icon="download" className="no-print" aria-label={`Download ${doc.name}`} title="Downloaden" onClick={downloadLarge} />
-      )}
-      {canManage && (
-        <Button
-          variant="danger"
-          icon="trash"
-          className="no-print"
-          aria-label={`Verwijder ${doc.name}`}
-          title="Verwijderen"
-          onClick={async () => {
-            if (!window.confirm(`"${doc.name}" definitief verwijderen?`)) return;
-            if (await run(() => api(`/api/documents/${doc.id}`, { method: "DELETE" }), "Stuk verwijderd")) onChanged();
-          }}
-        />
-      )}
+      {/* De knoppen blijven bij elkaar: op een smal scherm schuiven ze samen onder de naam. */}
+      <div className="doc-actions">
+        {extra}
+        {showSummary && (
+          <Button variant="ghost" small icon="spark" className="no-print" title="Samenvatting door de AI-assistent" aria-label="Samenvatting" onClick={() => setSummary(true)}>
+            <span className="doc-label">Samenvatting</span>
+          </Button>
+        )}
+        {direct ? (
+          <a className="btn ghost icon no-print" href={fileUrl(doc, true)} aria-label={`Download ${doc.name}`} title="Downloaden">
+            <Icon name="download" size={17} />
+          </a>
+        ) : (
+          <Button variant="ghost" icon="download" className="no-print" aria-label={`Download ${doc.name}`} title="Downloaden" onClick={downloadLarge} />
+        )}
+        {canManage && (
+          <Button
+            variant="danger"
+            icon="trash"
+            className="no-print"
+            aria-label={`Verwijder ${doc.name}`}
+            title="Verwijderen"
+            onClick={async () => {
+              if (!window.confirm(`"${doc.name}" definitief verwijderen?`)) return;
+              if (await run(() => api(`/api/documents/${doc.id}`, { method: "DELETE" }), "Stuk verwijderd")) onChanged();
+            }}
+          />
+        )}
+      </div>
       {summary && <SummaryModal doc={doc} canRefresh={canManage} onClose={() => setSummary(false)} onChanged={onChanged} />}
     </div>
   );

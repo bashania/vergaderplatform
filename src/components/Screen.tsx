@@ -147,7 +147,8 @@ export function Screen({
       </header>
 
       <div className="live-body">
-        <nav className="live-rail" aria-label="Agenda">
+        {/* Hier valt niets aan te klikken; tabIndex maakt de lijst met het toetsenbord te schuiven. */}
+        <nav className="live-rail" aria-label="Agenda" tabIndex={0}>
           {order.map(({ item, number }, index) => {
             const isCurrent = item.id === live.itemId;
             const done = !isCurrent && (item.spentSec > 0 || (liveIndex >= 0 && index < liveIndex));
@@ -169,6 +170,10 @@ export function Screen({
             </div>
           ) : doc ? (
             <div className="stage-wrap">
+              <h1 className="sr-only">
+                {current ? `${current.item.title}: ` : ""}
+                {doc.name}
+              </h1>
               <div className="stage-bar">
                 {current && <span className="live-nr small">{current.number}</span>}
                 {current && <strong>{current.item.title}</strong>}

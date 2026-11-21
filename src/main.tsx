@@ -30,6 +30,7 @@ import OverlegPage from "./pages/Overleg";
 import UitlegPage from "./pages/Uitleg";
 import OverleggenPage from "./pages/Overleggen";
 import ZoekenPage from "./pages/Zoeken";
+import { PageTitle } from "./components/PageTitle";
 import { ToastProvider } from "./ui";
 
 function NotFound() {
@@ -88,6 +89,7 @@ createRoot(document.getElementById("root")!).render(
       <AuthProvider>
         <ToastProvider>
           <App />
+          <PageTitle />
         </ToastProvider>
       </AuthProvider>
     </BrowserRouter>

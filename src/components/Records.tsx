@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import { fmtDay, isOverdue, type Action, type Decision, type Member } from "../lib";
-import { Button, Empty, Field, Form, Modal, useRun } from "../ui";
+import { Button, Empty, Field, Form, Modal, TableWrap, useRun } from "../ui";
 
 // ---------- acties ----------
 
@@ -220,7 +220,7 @@ export function DecisionModal({
 export function DecisionTable({ decisions, showOverleg }: { decisions: Decision[]; showOverleg?: boolean }) {
   if (!decisions.length) return <Empty title="Nog geen besluiten">Besluiten leg je vast in de vergadering, bij het agendapunt.</Empty>;
   return (
-    <div className="table-wrap">
+    <TableWrap label="Besluiten">
       <table className="table">
         <thead>
           <tr>
@@ -249,6 +249,6 @@ export function DecisionTable({ decisions, showOverleg }: { decisions: Decision[
           ))}
         </tbody>
       </table>
-    </div>
+    </TableWrap>
   );
 }

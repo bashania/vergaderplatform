@@ -35,6 +35,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.3.0",
+    "axe-core": "^4.10.3",
     "mailparser": "^3.15.0",
     "netlify-cli": "^27.20.1",
     "smtp-server": "^3.21.7",

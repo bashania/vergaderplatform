@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { BRAND } from "../shared/brand";
 import { useAuth, useUser } from "./auth";
@@ -21,10 +21,20 @@ export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
 
+  const main = useRef<HTMLElement>(null);
+  const arrived = useRef(false);
+
   // Menu dicht en naar boven bij elke navigatie.
   useEffect(() => {
     setOpen(false);
     window.scrollTo(0, 0);
+    // Na een wissel van pagina gaat de focus naar de inhoud, zodat Tab daar verdergaat en niet opnieuw
+    // door het menu. Niet bij het openen van de site, en niet als de pagina zelf al een veld heeft gekozen.
+    if (!arrived.current) {
+      arrived.current = true;
+      return;
+    }
+    if (main.current && !main.current.contains(document.activeElement)) main.current.focus({ preventScroll: true });
   }, [location.pathname]);
 
   function search(e: FormEvent) {
@@ -47,6 +57,16 @@ export default function Layout() {
 
   return (
     <div className={`shell ${open ? "menu-open" : ""}`}>
+      <a
+        className="skip-link"
+        href="#inhoud"
+        onClick={(e) => {
+          e.preventDefault();
+          main.current?.focus();
+        }}
+      >
+        Naar de inhoud
+      </a>
       <header className="topbar">
         <img src="/favicon.svg" alt="" />
         <strong>{org?.name ?? BRAND}</strong>
@@ -141,7 +161,7 @@ export default function Layout() {
       </aside>
 
       {/* Bij wisselen van organisatie laden alle pagina's opnieuw. */}
-      <main className="main" key={org?.id ?? "geen"}>
+      <main className="main" id="inhoud" tabIndex={-1} ref={main} key={org?.id ?? "geen"}>
         <Outlet />
       </main>
     </div>
