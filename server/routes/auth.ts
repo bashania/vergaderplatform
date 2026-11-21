@@ -36,7 +36,8 @@ route.get(
   async (c) => {
     const [org, anyUser, organisations, account, mail] = await Promise.all([
       q1<{ value: string }>(`SELECT value FROM settings WHERE key = 'orgName'`),
-      c.user ? null : q1(`SELECT 1 AS x FROM users LIMIT 1`),
+      // Geen accounts, of een terugzetactie die nog loopt: dan staat het inrichtscherm klaar.
+      c.user ? null : q1(`SELECT 1 AS x FROM users WHERE NOT EXISTS (SELECT 1 FROM settings WHERE key = 'restore.busy') LIMIT 1`),
       c.user ? myOrganisations(c.user.id) : [],
       c.user
         ? q1<{ hasPassword: boolean; passkeys: number }>(

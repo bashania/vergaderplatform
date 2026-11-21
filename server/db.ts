@@ -23,8 +23,18 @@ export async function q<T = any>(text: string, params: unknown[] = []): Promise<
   return camel(rows) as T[];
 }
 
+/** Zoals q, maar met de kolomnamen en json-inhoud precies zoals de database ze geeft (voor de back-up). */
+export async function qRaw<T = any>(text: string, params: unknown[] = []): Promise<T[]> {
+  return (await db().sql.unsafe(text, params as any[])) as T[];
+}
+
 export async function q1<T = any>(text: string, params: unknown[] = []): Promise<T | null> {
   return (await q<T>(text, params))[0] ?? null;
+}
+
+/** Regio van de database, afgeleid uit de hostnaam (bijvoorbeeld "us-east-2" of "eu-central-1"). */
+export function dbRegion(): string {
+  return /\.((?:us|eu|ap|sa|ca|me|af|il)-[a-z]+-\d)\./.exec(dbHost())?.[1] ?? (dbHost() === "localhost" ? "lokaal" : "onbekend");
 }
 
 /** Hostnaam van de database (zonder inloggegevens), voor de diagnosepagina. */

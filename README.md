@@ -25,7 +25,8 @@ Agenda's, stukken, besluiten en acties op één plek, zodat alle deelnemers alti
 - **Vraag het archief**: de AI-assistent beantwoordt vragen in gewone taal over eerdere besluiten, acties en notulen, met de bronnen erbij.
 - **Aan- en afmelden vanuit de e-mail**: de agendamail en de herinnering hebben knoppen waarmee een deelnemer zonder in te loggen laat weten of hij erbij is.
 - **Stemrondes**: een besluit nemen buiten de vergadering om. Deelnemers stemmen met één klik; een aangenomen voorstel krijgt een besluitnummer en staat met de stemverhouding in de besluitenlijst.
-- **Systeemcontrole** (platformbeheerder): één knop die database, opslag, AI-assistent, mailserver, Plaud en de dagelijkse herinneringen echt aanspreekt en zegt of ze werken.
+- **Systeemcontrole** (platformbeheerder): één knop die database, opslag, AI-assistent, mailserver, Plaud en de dagelijkse herinneringen echt aanspreekt en zegt of ze werken, en die meldt in welke regio de gegevens staan.
+- **Back-up en terugzetten** (platformbeheerder): alle gegevens als één bestand downloaden en op een leeg platform terugzetten, voor een verhuizing of herstel.
 - **In gebruik nemen**: een lijst "Aan de slag" op het overzicht van de beheerder (verdwijnt als alles is ingericht), een uitlegpagina per rol in het menu, en de actie- en besluitenlijst als bestand voor Excel.
 - **Transcript en Plaud**: de secretaris zet het transcript van de opname bij de vergadering, opgehaald uit Plaud of geplakt als tekst (ook uit Teams of Zoom). De AI-assistent maakt er concept-notulen per agendapunt van; de secretaris loopt ze na en neemt ze over.
 
@@ -92,6 +93,25 @@ Stemrecht hebben de deelnemers van het overleg; een beheerder die niet deelneemt
 ### Vertrouwelijke onderwerpen
 
 Wie deelneemt aan een overleg, ziet alles van dat overleg. Afscherming per agendapunt is er bewust niet: elke plek waar inhoud naar buiten komt (agenda, stukken, zoeken, archiefvragen, e-mail, agenda-abonnement, vergadermodus) zou die uitzondering moeten kennen, en één gemiste plek is een lek. Voor een kleinere kring maak je een eigen overleg met alleen die deelnemers.
+
+### Waar de gegevens staan
+
+Drie plekken, elk met een eigen regio:
+
+| Wat | Regio | Hoe ingesteld |
+|---|---|---|
+| Functies (waar de verwerking gebeurt) | Standaard `cmh` (VS, Ohio) | In Netlify: Cloud compute, Functions, Region. Daarna opnieuw publiceren. |
+| Database | De functieregio op het moment dat de database is aangemaakt | Volgt de functieregio bij aanmaak; achteraf wijzigen is niet gedocumenteerd. |
+| Stukken | `eu-central-1` (Frankfurt) | In de code (`BLOB_REGION`). |
+
+`/api/health` en de Systeemcontrole laten de actuele regio's zien. Zet de functieregio op Frankfurt (`fra`) **voordat** het project voor het eerst wordt gepubliceerd; dan komt ook de database daar. Staat de database al elders, dan is verhuizen: back-up downloaden, de database in de nieuwe regio opnieuw laten aanmaken, en de back-up terugzetten.
+
+### Back-up en terugzetten
+
+- De back-up bevat alle tabellen behalve vluchtige zaken (sessies, eenmalige links, logboeken van mail en AI). De bestanden van stukken zitten er niet in; die blijven in de opslag van het project.
+- Terugzetten kan alleen op een leeg platform en met de installatiecode (`SETUP_CODE`). Tijdens het terugzetten blijft het inrichtscherm staan; een afgebroken actie kan opnieuw beginnen.
+- Rijen gaan terug zoals de database ze kende. Kolommen die een nieuwere versie erbij heeft gekregen, krijgen hun standaardwaarde.
+- Test: `BACKUP_OUT=backup.json npm run test:e2e`, daarna op een lege database `BACKUP=backup.json node scripts/restore-test.mjs`.
 
 ### Agenda-abonnement
 
