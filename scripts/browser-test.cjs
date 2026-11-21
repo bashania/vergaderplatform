@@ -28,6 +28,20 @@ const inked = (page) =>
     return { width: c.width, height: c.height, dark };
   });
 
+/**
+ * Wacht tot het doek echt is getekend. Een vaste wachttijd is op een trage machine te kort: het doek staat
+ * er dan al, maar de pagina van de pdf nog niet.
+ */
+async function drawn(page) {
+  let last = { dark: 0 };
+  for (let i = 0; i < 40; i++) {
+    last = await inked(page).catch(() => ({ dark: 0 }));
+    if (last.dark > 300) break;
+    await page.waitForTimeout(250);
+  }
+  return last;
+}
+
 (async () => {
   const browser = await playwright[ENGINE].launch();
   console.log(`browser: ${ENGINE} ${browser.version()}`);
@@ -69,9 +83,8 @@ const inked = (page) =>
   await sec.getByRole("button", { name: "Op het scherm" }).first().click();
   await sec.locator(".stage canvas:not([hidden])").waitFor({ timeout: 45000 });
   await sec.getByText("pagina 1 van 3").waitFor();
-  await sec.waitForTimeout(800);
-  const drawn = await inked(sec);
-  check("secretaris: de pdf is getekend", drawn.dark > 300, JSON.stringify(drawn));
+  const first = await drawn(sec);
+  check("secretaris: de pdf is getekend", first.dark > 300, JSON.stringify(first));
   await sec.getByRole("button", { name: "Volgende pagina" }).click();
   await sec.getByText("pagina 2 van 3").waitFor();
   await sec.waitForTimeout(700);
@@ -95,8 +108,9 @@ const inked = (page) =>
   await beamer.locator(".stage canvas:not([hidden])").waitFor({ timeout: 45000 });
   await beamer.getByText("pagina 2 van 3").waitFor();
   await beamer.locator(".screen-foot .join-code").waitFor();
-  await beamer.waitForTimeout(700);
-  check("presentatiescherm: het stuk op pagina 2, de typcode onderaan en geen notulenveld", (await beamer.locator(".screen-foot .join-code").innerText()).trim() === code && (await beamer.locator("textarea").count()) === 0 && (await inked(beamer)).dark > 300);
+  const shown = await drawn(beamer);
+  const footCode = (await beamer.locator(".screen-foot .join-code").innerText()).trim();
+  check("presentatiescherm: het stuk op pagina 2, de typcode onderaan en geen notulenveld", footCode === code && (await beamer.locator("textarea").count()) === 0 && shown.dark > 300, JSON.stringify({ code: footCode, ...shown }));
   await shot(beamer, "presentatiescherm");
 
   // Een meekijker zonder account, op een telefoon. In WebKit met de kenmerken van een iPhone.
@@ -117,8 +131,7 @@ const inked = (page) =>
   await guest.getByRole("button", { name: "Meekijken" }).click();
   await guest.locator(".stage canvas:not([hidden])").waitFor({ timeout: 45000 });
   await guest.getByText("pagina 2 van 3").waitFor();
-  await guest.waitForTimeout(800);
-  const seen = await inked(guest);
+  const seen = await drawn(guest);
   check("meekijker: na het typen van de code is het stuk op pagina 2 getekend, zonder cookies", seen.dark > 300 && (await guestCtx.cookies()).length === 0, JSON.stringify(seen));
   await shot(guest, "meekijker");
 
