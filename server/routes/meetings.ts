@@ -54,6 +54,10 @@ const STATUSES = ["concept", "gepubliceerd", "afgerond"] as const;
 route.post("/api/overleggen/:id/meetings", async (c) => {
   const overlegId = uuid(c.params.id, "Overleg");
   await requireOverleg(c.user, overlegId, true);
+  // Een gearchiveerd overleg staat in geen enkel overzicht en in geen agenda: een nieuwe vergadering zou niemand zien.
+  if ((await q1<{ archived: boolean }>(`SELECT archived FROM overleggen WHERE id = $1`, [overlegId]))?.archived) {
+    throw new HttpError(409, "Dit overleg is gearchiveerd. Zet het eerst terug om een vergadering te plannen.");
+  }
   const b = await c.body();
   const title = str(b.title, "Titel", { max: 200 });
   const startsAt = dateTime(b.startsAt, "Datum en tijd");

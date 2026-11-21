@@ -28,6 +28,20 @@ const inked = (page) =>
     return { width: c.width, height: c.height, dark };
   });
 
+/**
+ * Wacht tot het doek echt is getekend. Een vaste wachttijd is op een trage machine te kort: het doek staat
+ * er dan al, maar de pagina van de pdf nog niet.
+ */
+async function drawn(page) {
+  let last = { dark: 0 };
+  for (let i = 0; i < 40; i++) {
+    last = await inked(page).catch(() => ({ dark: 0 }));
+    if (last.dark > 300) break;
+    await page.waitForTimeout(250);
+  }
+  return last;
+}
+
 (async () => {
   const browser = await playwright[ENGINE].launch();
   console.log(`browser: ${ENGINE} ${browser.version()}`);
@@ -69,9 +83,8 @@ const inked = (page) =>
   await sec.getByRole("button", { name: "Op het scherm" }).first().click();
   await sec.locator(".stage canvas:not([hidden])").waitFor({ timeout: 45000 });
   await sec.getByText("pagina 1 van 3").waitFor();
-  await sec.waitForTimeout(800);
-  const drawn = await inked(sec);
-  check("secretaris: de pdf is getekend", drawn.dark > 300, JSON.stringify(drawn));
+  const first = await drawn(sec);
+  check("secretaris: de pdf is getekend", first.dark > 300, JSON.stringify(first));
   await sec.getByRole("button", { name: "Volgende pagina" }).click();
   await sec.getByText("pagina 2 van 3").waitFor();
   await sec.waitForTimeout(700);
@@ -95,8 +108,9 @@ const inked = (page) =>
   await beamer.locator(".stage canvas:not([hidden])").waitFor({ timeout: 45000 });
   await beamer.getByText("pagina 2 van 3").waitFor();
   await beamer.locator(".screen-foot .join-code").waitFor();
-  await beamer.waitForTimeout(700);
-  check("presentatiescherm: het stuk op pagina 2, de typcode onderaan en geen notulenveld", (await beamer.locator(".screen-foot .join-code").innerText()).trim() === code && (await beamer.locator("textarea").count()) === 0 && (await inked(beamer)).dark > 300);
+  const shown = await drawn(beamer);
+  const footCode = (await beamer.locator(".screen-foot .join-code").innerText()).trim();
+  check("presentatiescherm: het stuk op pagina 2, de typcode onderaan en geen notulenveld", footCode === code && (await beamer.locator("textarea").count()) === 0 && shown.dark > 300, JSON.stringify({ code: footCode, ...shown }));
   await shot(beamer, "presentatiescherm");
 
   // Een meekijker zonder account, op een telefoon. In WebKit met de kenmerken van een iPhone.
@@ -117,8 +131,7 @@ const inked = (page) =>
   await guest.getByRole("button", { name: "Meekijken" }).click();
   await guest.locator(".stage canvas:not([hidden])").waitFor({ timeout: 45000 });
   await guest.getByText("pagina 2 van 3").waitFor();
-  await guest.waitForTimeout(800);
-  const seen = await inked(guest);
+  const seen = await drawn(guest);
   check("meekijker: na het typen van de code is het stuk op pagina 2 getekend, zonder cookies", seen.dark > 300 && (await guestCtx.cookies()).length === 0, JSON.stringify(seen));
   await shot(guest, "meekijker");
 
@@ -143,6 +156,26 @@ const inked = (page) =>
   await sec.locator(".live-top").getByRole("button", { name: "Beëindigen" }).click();
   await guest.getByText(/Het meekijken is gestopt/).waitFor({ timeout: 30000 });
   check("beëindigd: de meekijker krijgt de melding dat het meekijken is gestopt", true);
+
+  // Een overleg archiveren en definitief verwijderen, door het scherm heen.
+  const proef = "Proefoverleg opruimen";
+  const made = await secCtx.request.post(`${BASE}/api/overleggen`, { data: { name: proef }, headers: { origin: BASE, "x-organisation": demo.org } });
+  await sec.goto(`${BASE}/overleggen/${(await made.json()).id}`);
+  await sec.getByRole("button", { name: "Archiveren" }).click(); // de bevestiging wordt hierboven automatisch geaccepteerd
+  await sec.getByText("Dit overleg staat in het archief.").waitFor();
+  check("gearchiveerd: balk met uitleg en terugzetten, geen nieuwe vergadering meer", (await sec.getByRole("button", { name: "Terugzetten" }).count()) === 1 && (await sec.getByRole("button", { name: "Nieuwe vergadering" }).count()) === 0);
+  await sec.getByRole("button", { name: "Definitief verwijderen" }).click();
+  const remove = sec.locator("dialog[open]");
+  await remove.getByText("Dit kan niet ongedaan worden gemaakt.").waitFor();
+  const confirm = remove.getByRole("button", { name: "Definitief verwijderen" });
+  await remove.getByRole("textbox").fill("Proefoverleg");
+  check("verwijderen: de knop werkt pas als de naam precies is overgetypt", await confirm.isDisabled());
+  await remove.getByRole("textbox").fill(proef);
+  await confirm.click();
+  await sec.waitForURL(/\/overleggen$/);
+  await sec.getByRole("heading", { name: "Overleggen", exact: true }).waitFor();
+  await sec.getByRole("link", { name: /Bestuursoverleg/ }).first().waitFor();
+  check("verwijderd: terug op de lijst, en het overleg staat er niet meer", (await sec.locator("main").getByRole("link", { name: proef }).count()) === 0);
 
   await browser.close();
   check("geen fouten in de browser", problems.length === 0, problems.join(" | ").slice(0, 600));

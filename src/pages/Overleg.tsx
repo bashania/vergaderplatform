@@ -10,7 +10,7 @@ import { LinkModal, type LinkInfo } from "../components/LinkModal";
 import { ActionList, DecisionTable } from "../components/Records";
 import { SuggestionsCard } from "../components/Suggestions";
 import { fromLocalInput, toLocalInput, type Action, type Decision, type Doc, type Member, type MeetingSummary, type Role } from "../lib";
-import { BeslotenBadge, Button, Empty, Field, Form, Loader, Modal, useLoad, useRun } from "../ui";
+import { BeslotenBadge, Button, Empty, Field, Form, Loader, Modal, useLoad, useRun, useToast } from "../ui";
 import { AGENDA_TEMPLATES } from "../templates";
 import { MeetingRow } from "./Dashboard";
 
@@ -21,6 +21,8 @@ type OverlegDetail = {
   role: Role;
   /** De rol als deelnemer, los van het beheer van de organisatie. */
   memberRole: Role | null;
+  /** Mag archiveren, terugzetten en verwijderen: het beheer van de organisatie, of bij een besloten overleg de secretaris die deelneemt. */
+  mayManage: boolean;
   /** Bij een besloten kring: het overleg waar hij bij hoort, als de gebruiker dat ook ziet. */
   parent: { id: string; name: string } | null;
   /** Besloten kringen van dit overleg waar de gebruiker zelf in zit. */
@@ -159,7 +161,6 @@ function NewMeeting({ data, from, onClose }: { data: OverlegDetail; from?: Meeti
 function EditOverleg({ data, onClose, onSaved }: { data: OverlegDetail; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState(data.overleg.name);
   const [description, setDescription] = useState(data.overleg.description);
-  const [archived, setArchived] = useState(data.overleg.archived);
   const [besloten, setBesloten] = useState(data.overleg.besloten);
   // Besloten maken of openstellen kan alleen wie zelf als secretaris deelneemt.
   const maySeal = data.memberRole === "secretaris";
@@ -169,7 +170,6 @@ function EditOverleg({ data, onClose, onSaved }: { data: OverlegDetail; onClose:
         onCancel={onClose}
         onSubmit={async () => {
           const body: Record<string, unknown> = { name, description };
-          if (data.orgAdmin) body.archived = archived;
           if (maySeal) body.besloten = besloten;
           await api(`/api/overleggen/${data.overleg.id}`, { method: "PATCH", body });
           onSaved();
@@ -181,12 +181,6 @@ function EditOverleg({ data, onClose, onSaved }: { data: OverlegDetail; onClose:
         <Field label="Omschrijving">
           <textarea className="input" maxLength={1000} value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>
-        {data.orgAdmin && (
-          <label className="check">
-            <input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} />
-            Gearchiveerd (blijft raadpleegbaar, verdwijnt uit de overzichten)
-          </label>
-        )}
         {maySeal && (
           <label className="check">
             <input type="checkbox" checked={besloten} onChange={(e) => setBesloten(e.target.checked)} />
@@ -409,6 +403,54 @@ function KringCard({ data, canEdit }: { data: OverlegDetail; canEdit: boolean })
   );
 }
 
+type Contents = { meetings: number; documents: number; decisions: number; actions: number; kringen: number };
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * Definitief verwijderen. Kan alleen vanuit het archief, toont wat er weggaat en vraagt de naam over te
+ * typen: drie stappen, zodat het nooit per ongeluk gebeurt.
+ */
+function DeleteOverleg({ data, onClose, onDeleted }: { data: OverlegDetail; onClose: () => void; onDeleted: () => void }) {
+  const contents = useLoad<Contents>(`/api/overleggen/${data.overleg.id}/contents`);
+  const [typed, setTyped] = useState("");
+  const name = data.overleg.name.trim();
+  const c = contents.data;
+  return (
+    <Modal title="Overleg definitief verwijderen" onClose={onClose}>
+      <Form
+        submitLabel="Definitief verwijderen"
+        danger
+        disabled={typed.trim() !== name}
+        onCancel={onClose}
+        onSubmit={async () => {
+          await api(`/api/overleggen/${data.overleg.id}/delete`, { method: "POST", body: { name: typed } });
+          onDeleted();
+        }}
+      >
+        <Loader loading={contents.loading} error={contents.error}>
+          {c && (
+            <div className="notice warm" role="note">
+              <strong>Dit kan niet ongedaan worden gemaakt.</strong> Met “{name}” verdwijnen {count(c.meetings, "vergadering", "vergaderingen")} met agenda en notulen,{" "}
+              {count(c.documents, "stuk", "stukken")}, {count(c.decisions, "besluit", "besluiten")} en {count(c.actions, "actie", "acties")}, ook voor de andere
+              deelnemers.
+            </div>
+          )}
+          {c && c.kringen > 0 && (
+            <p className="small">
+              {c.kringen === 1 ? "De besloten kring van dit overleg blijft" : `De ${c.kringen} besloten kringen van dit overleg blijven`} bestaan als zelfstandig
+              overleg.
+            </p>
+          )}
+        </Loader>
+        <p className="small muted">Wil je het overleg alleen uit het zicht hebben, laat het dan in het archief staan: daar blijft alles raadpleegbaar.</p>
+        <Field label={`Typ de naam van het overleg om te bevestigen: ${name}`}>
+          <input className="input" autoComplete="off" value={typed} onChange={(e) => setTyped(e.target.value)} />
+        </Field>
+      </Form>
+    </Modal>
+  );
+}
+
 export default function OverlegPage() {
   const { id } = useParams();
   const user = useUser();
@@ -418,7 +460,15 @@ export default function OverlegPage() {
   const decisions = useLoad<{ decisions: Decision[] }>(tab === "besluiten" ? `/api/decisions?overleg=${id}` : null);
   const [allActions, setAllActions] = useState(false);
   const actions = useLoad<{ actions: Action[] }>(tab === "acties" ? `/api/actions?overleg=${id}${allActions ? "&status=alle" : ""}` : null);
-  const [modal, setModal] = useState<"meeting" | "edit" | null>(null);
+  const [modal, setModal] = useState<"meeting" | "edit" | "delete" | null>(null);
+  const run = useRun();
+  const toast = useToast();
+  const navigate = useNavigate();
+
+  async function setArchived(archived: boolean) {
+    if (archived && !window.confirm(`"${data?.overleg.name}" archiveren?\n\nHet overleg verdwijnt uit de overzichten en de agenda's, en er gaan geen herinneringen meer uit. Alles blijft raadpleegbaar en je kunt het altijd terugzetten.`)) return;
+    if (await run(() => api(`/api/overleggen/${id}`, { method: "PATCH", body: { archived } }), archived ? "Overleg gearchiveerd" : "Overleg teruggezet uit het archief")) reload();
+  }
 
   // Geopend via een directe link: werk dan verder in de organisatie van dit overleg.
   const { ensureOrg } = useAuth();
@@ -476,12 +526,39 @@ export default function OverlegPage() {
                   <Button variant="secondary" icon="edit" onClick={() => setModal("edit")}>
                     Bewerken
                   </Button>
-                  <Button icon="plus" onClick={() => setModal("meeting")}>
-                    Nieuwe vergadering
-                  </Button>
+                  {data.mayManage && !data.overleg.archived && (
+                    <Button variant="secondary" icon="archive" onClick={() => void setArchived(true)}>
+                      Archiveren
+                    </Button>
+                  )}
+                  {!data.overleg.archived && (
+                    <Button icon="plus" onClick={() => setModal("meeting")}>
+                      Nieuwe vergadering
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
+
+            {data.overleg.archived && (
+              <div className="notice archived-bar">
+                <div className="grow">
+                  <strong>Dit overleg staat in het archief.</strong> Alles blijft raadpleegbaar, maar het staat niet meer in de overzichten en de agenda's, en er
+                  gaan geen herinneringen uit.
+                  {!data.mayManage && " Een beheerder van de organisatie kan het terugzetten."}
+                </div>
+                {data.mayManage && (
+                  <div className="row">
+                    <Button variant="secondary" icon="undo" onClick={() => void setArchived(false)}>
+                      Terugzetten
+                    </Button>
+                    <Button variant="danger" icon="trash" onClick={() => setModal("delete")}>
+                      Definitief verwijderen
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
 
             <nav className="tabs" aria-label="Onderdelen van dit overleg">
               {TABS.map(([key, label]) => (
@@ -505,7 +582,7 @@ export default function OverlegPage() {
                       ))}
                     </ul>
                   ) : (
-                    <Empty title="Geen vergadering gepland">{canEdit && "Plan de volgende met Nieuwe vergadering."}</Empty>
+                    <Empty title="Geen vergadering gepland">{canEdit && !data.overleg.archived && "Plan de volgende met Nieuwe vergadering."}</Empty>
                   )}
                 </section>
                 {past.length > 0 && (
@@ -573,6 +650,16 @@ export default function OverlegPage() {
 
             {modal === "meeting" && <NewMeeting data={data} onClose={() => setModal(null)} />}
             {planFrom && !modal && <NewMeeting data={data} from={planFrom} onClose={() => setSp({}, { replace: true })} />}
+            {modal === "delete" && (
+              <DeleteOverleg
+                data={data}
+                onClose={() => setModal(null)}
+                onDeleted={() => {
+                  toast(`"${data.overleg.name}" is verwijderd`);
+                  navigate("/overleggen", { replace: true });
+                }}
+              />
+            )}
             {modal === "edit" && (
               <EditOverleg
                 data={data}

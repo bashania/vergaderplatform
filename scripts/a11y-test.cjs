@@ -135,6 +135,18 @@ async function audit(page, name) {
       await audit(page, `${label} venster-agendapunt`);
       await page.keyboard.press("Escape");
 
+      // Een gearchiveerd overleg en het venster om het definitief te verwijderen.
+      const proef = await (await ctx.request.post(`${BASE}/api/overleggen`, { data: { name: "Proefoverleg toegankelijkheid" }, headers: { origin: BASE, "x-organisation": demo.org } })).json();
+      await ctx.request.patch(`${BASE}/api/overleggen/${proef.id}`, { data: { archived: true }, headers: { origin: BASE, "x-organisation": demo.org } });
+      await page.goto(`${BASE}/overleggen/${proef.id}`);
+      await page.getByText("Dit overleg staat in het archief.").waitFor();
+      await audit(page, `${label} overleg-archief`);
+      await page.getByRole("button", { name: "Definitief verwijderen" }).click();
+      await page.locator("dialog[open]").getByText("Dit kan niet ongedaan worden gemaakt.").waitFor();
+      await audit(page, `${label} venster-verwijderen`);
+      await page.keyboard.press("Escape");
+      await ctx.request.post(`${BASE}/api/overleggen/${proef.id}/delete`, { data: { name: "Proefoverleg toegankelijkheid" }, headers: { origin: BASE, "x-organisation": demo.org } });
+
       // Vergadermodus, met een stuk op het scherm en meekijken aan.
       await page.goto(`${BASE}/vergaderingen/${demo.meeting}/live`);
       await page.getByRole("button", { name: "Vergadering starten" }).waitFor();
