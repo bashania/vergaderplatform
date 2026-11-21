@@ -15,6 +15,8 @@ Agenda's, stukken, besluiten en acties op één plek, zodat alle deelnemers alti
 - **Tweestapsverificatie per organisatie**: een beheerder kan een passkey verplicht stellen. Wie met alleen een wachtwoord is ingelogd, komt die organisatie dan niet in.
 - **Status**: concept (alleen secretaris) → gepubliceerd (deelnemers zien alles) → afgerond (vergrendeld).
 - **Vergadermodus**: tijdens het overleg één scherm met het actuele agendapunt, de stukken, de klok (besteed tegenover gepland) en de notulen, die vanzelf worden opgeslagen. Deelnemers die het scherm openen, lopen zonder verversen mee met de secretaris. De bestede tijd per punt komt in het verslag.
+- **Stuk op het scherm en presentatiescherm**: de secretaris toont een pdf of afbeelding in de vergadermodus en bladert erdoor; wie meeloopt, ziet hetzelfde stuk en dezelfde pagina. Een apart presentatiescherm voor de beamer toont de agenda, het actuele punt, de klok en het stuk, zonder notulen.
+- **Meekijken met QR-code of code**: aanwezigen en gasten volgen de vergadering op hun eigen scherm zonder account. Ze zien alleen wat op het scherm staat. Per vergadering aan te zetten; stopt bij het einde van de vergadering.
 - **AI-assistent** (per organisatie aan te zetten): vat een pdf of tekstbestand samen ter voorbereiding en stelt na afloop besluiten en acties voor uit de notulen. De assistent legt zelf niets vast; de secretaris neemt een voorstel over of niet.
 - **Installeerbaar**: op telefoon, tablet of computer als app op het beginscherm te zetten.
 - **Agendapunten aandragen**: deelnemers leveren tussen de vergaderingen door onderwerpen aan; de secretaris zet ze met één klik op een agenda of wijst ze af met een reden.
@@ -65,6 +67,14 @@ De gekozen organisatie gaat mee in de header `x-organisation` en bepaalt wat de 
 
 - De stand (bezig of niet, het actuele punt) staat bij de vergadering. Het scherm vraagt die elke 4 seconden op zolang het zichtbaar is; alleen als er iets is gewijzigd, haalt het de hele vergadering opnieuw op.
 - Alleen de secretaris of beheerder start, wisselt van punt en beëindigt. Afronden of terugzetten naar concept beëindigt de vergadermodus vanzelf.
+
+### Stuk op het scherm, presentatiescherm en meekijken
+
+- **Stuk op het scherm** (`meetings.live_doc_id`, `live_doc_page`): hoort bij de stand van de vergadermodus. Naar een ander agendapunt gaan of de vergadermodus beëindigen haalt het stuk van het scherm. Pdf's worden in de browser getekend met pdf.js (`src/components/PdfView.tsx`), dat pas wordt opgehaald als er een pdf op het scherm komt; zo is de pagina op elk apparaat dezelfde.
+- **Het scherm** (`server/routes/screen.ts`): één toestand met alleen wat in de zaal zichtbaar mag zijn: agenda, actueel punt, klok en het getoonde stuk. Notulen, besluiten, acties, andere stukken en namen van deelnemers zitten er niet in. Het presentatiescherm (`/vergaderingen/:id/scherm`, ingelogd) en de meekijkpagina (`/meekijken`, zonder account) tonen dezelfde toestand.
+- **Meekijken zonder account**: de secretaris zet het per vergadering aan. Er ontstaat een lange link (in de QR-code) en een code van acht tekens om over te typen. Beide gelden alleen zolang de vergadermodus loopt, hooguit twaalf uur, en niet bij een besloten overleg. Mislukte pogingen om een code te raden worden per adres en in totaal begrensd. Een meekijker kan alleen het stuk ophalen dat op dat moment op het scherm staat.
+- **Veel meekijkers**: de toestand is voor elke meekijker gelijk en wordt daarom één seconde door het netwerk van Netlify bewaard (`Netlify-CDN-Cache-Control`, met `durable`). Honderd meekijkers kosten zo ongeveer evenveel aanroepen als één. De delen van het getoonde stuk worden twee minuten bewaard. De browser zelf bewaart niets.
+- Lokaal bootst `netlify dev` dat bewaren niet na; in productie is het te zien aan de kop `Cache-Status` van `/api/meekijken/<link>`.
 
 ### AI-assistent
 
@@ -206,7 +216,7 @@ De film wordt opgenomen door een script dat met fictieve gegevens door de scherm
 1. Start de lokale server met een lege database en `scripts/film/demo.env` als `.env`, en draai de migraties.
 2. `node scripts/film/seed-demo.cjs > demo.json` vult de demogegevens.
 3. `REC=1 node scripts/film/film.cjs uit "$(cat demo.json)"` neemt de beelden op (zonder `REC=1`: alleen schermafbeeldingen, als snelle controle). Het script start zelf een nagebouwde mailserver op poort 2525 voor de scène waarin de agenda wordt gemaild. Elke opname begint met verse demogegevens: stap 1 en 2 opnieuw.
-4. `node scripts/film/montage.cjs uit public/instructiefilm.mp4` maakt de film met ondertitels; `ffmpeg -ss 53 -i public/instructiefilm.mp4 -frames:v 1 -vf scale=1280:-1 -q:v 4 public/instructiefilm.jpg` maakt het stilstaande beeld.
+4. `node scripts/film/montage.cjs uit public/instructiefilm.mp4` maakt de film met ondertitels; `ffmpeg -ss 68 -i public/instructiefilm.mp4 -frames:v 1 -vf scale=1280:-1 -q:v 4 public/instructiefilm.jpg` maakt het stilstaande beeld.
 
 De film staat op de pagina Uitleg (`public/instructiefilm.mp4`) en wordt pas opgehaald als iemand op afspelen klikt. De samenvatting, de voorstellen en het antwoord uit het archief in de film komen uit de lokale testmodus, niet uit het taalmodel.
 

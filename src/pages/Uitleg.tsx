@@ -68,7 +68,12 @@ export default function UitlegPage() {
           <Topic title="Meelopen tijdens de vergadering">
             <p>
               Is de vergadering begonnen, dan staat er op het Overzicht en bij de vergadering een knop om mee te lopen. Je ziet steeds het punt dat aan de
-              orde is, met de stukken erbij. Het scherm wisselt vanzelf mee.
+              orde is, met de stukken erbij. Het scherm wisselt vanzelf mee. Zet de secretaris een stuk op het scherm, dan zie je dat stuk en dezelfde
+              pagina.
+            </p>
+            <p>
+              Staat er in de zaal een QR-code op het scherm, dan kun je ook zonder in te loggen meekijken: scan de code, of ga naar de pagina Meekijken en typ
+              de code over. Je ziet dan de agenda, het punt dat aan de orde is en het stuk dat wordt getoond.
             </p>
           </Topic>
           <Topic title="Stemmen buiten de vergadering">
@@ -119,6 +124,23 @@ export default function UitlegPage() {
               Klik bij de vergadering op Vergadermodus en start. Je ziet het actuele punt, de stukken en de klok. De notulen typ je erbij; ze worden vanzelf
               opgeslagen. Met Volgende ga je naar het volgende punt. Besluiten en acties leg je direct vast bij het punt.
             </p>
+          </Topic>
+          <Topic title="Een stuk tonen en laten meekijken">
+            <ul>
+              <li>
+                <strong>Stuk op het scherm</strong>: klik in de vergadermodus bij een pdf of afbeelding op Op het scherm. Met de pijltjes blader je; wie
+                meeloopt, ziet dezelfde pagina. Ga je naar het volgende agendapunt, dan gaat het stuk vanzelf van het scherm.
+              </li>
+              <li>
+                <strong>Presentatiescherm</strong>: opent een tweede venster voor de beamer of het grote scherm, met de agenda, het actuele punt, de klok en
+                het getoonde stuk. Je notulen staan daar niet op; die houd je in je eigen venster.
+              </li>
+              <li>
+                <strong>Meekijken</strong>: zet het aan en er verschijnt een QR-code en een korte code, ook op het presentatiescherm. Aanwezigen en gasten
+                kijken daarmee mee op hun eigen telefoon of laptop, zonder account. Ze zien alleen wat op het scherm staat: geen notulen, besluiten, acties
+                of andere stukken. Het stopt als je de vergadermodus beëindigt, en het kan niet bij een besloten overleg.
+              </li>
+            </ul>
           </Topic>
           <Topic title="Na afloop: notulen, besluiten en acties">
             <ol>

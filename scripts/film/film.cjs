@@ -254,6 +254,29 @@ function overlay() {
   await page.getByRole("heading", { name: "Groenplan binnentuin" }).waitFor();
   await wait(2000);
 
+  // Een stuk op het scherm, en meekijken met een QR-code
+  await caption("Zet een stuk op het scherm en blader erdoor. Wie meeloopt, ziet dezelfde pagina.");
+  await click(page.getByRole("button", { name: "Op het scherm" }).first());
+  await page.locator(".stage canvas:not([hidden])").waitFor();
+  await wait(2600);
+  await click(page.getByRole("button", { name: "Volgende pagina" }));
+  await page.getByText("pagina 2 van 3").waitFor();
+  await wait(3000);
+  await shot("stuk-op-het-scherm");
+  await caption("Laat aanwezigen meekijken op hun eigen telefoon: een QR-code scannen is genoeg, zonder account.");
+  await click(page.locator(".live-top").getByRole("button", { name: /Meekijken/ }));
+  await click(page.locator("dialog[open]").getByRole("button", { name: "Meekijken aanzetten" }));
+  await page.locator("dialog[open] svg.qr").waitFor();
+  // De opname draait lokaal; in beeld hoort het adres dat gebruikers zien.
+  await page.evaluate((host) => {
+    for (const el of document.querySelectorAll("dialog[open] strong")) el.textContent = el.textContent.replace(/localhost:\d+/, host);
+  }, process.env.FILM_HOST ?? "vergaderplatform.netlify.app");
+  await wait(4200);
+  await shot("meekijken");
+  await click(page.locator("dialog[open]").getByRole("button", { name: "Sluiten" }).first());
+  await click(page.locator(".stage-bar").getByRole("button", { name: "Van het scherm" }));
+  await wait(900);
+
   // 6. Notulen
   await caption("Typ de notulen bij het punt. Ze worden vanzelf opgeslagen.");
   const notes = page.locator("#live-notulen");
@@ -328,7 +351,7 @@ function overlay() {
 
   // 12. Afsluiting
   await caption("");
-  await card(title("Zelf aan de slag", "Uitleg per rol staat in het menu.<br>Ook: stemrondes buiten de vergadering, concept-notulen uit een opname en inzicht voor de beheerder."));
+  await card(title("Zelf aan de slag", "Uitleg per rol staat in het menu.<br>Ook: een presentatiescherm voor de beamer, stemrondes buiten de vergadering,<br>concept-notulen uit een opname en inzicht voor de beheerder."));
   await wait(4600);
   await shot("slot");
 

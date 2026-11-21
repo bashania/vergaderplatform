@@ -11,6 +11,8 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth";
 import Layout, { RequireOrganisation } from "./Layout";
 import AanwezigheidPage from "./pages/Aanwezigheid";
+import MeekijkenPage from "./pages/Meekijken";
+import SchermPage from "./pages/Scherm";
 import AccountPage from "./pages/Account";
 import ActiesPage from "./pages/Acties";
 import BeheerPage from "./pages/Beheer";
@@ -45,8 +47,12 @@ function App() {
       <Route path="/welkom" element={<WelcomePage />} />
       {/* Aan- of afmelden vanuit een e-mail: werkt zonder inloggen. */}
       <Route path="/aanwezigheid" element={<AanwezigheidPage />} />
+      {/* Meekijken met de code of QR-code uit de zaal: werkt zonder inloggen. */}
+      <Route path="/meekijken" element={<MeekijkenPage />} />
       {/* Vergadermodus: schermvullend, zonder menu. */}
       {user && <Route path="vergaderingen/:id/live" element={<LivePage />} />}
+      {/* Presentatiescherm voor de beamer: volgt de secretaris, zonder notulen. */}
+      {user && <Route path="vergaderingen/:id/scherm" element={<SchermPage />} />}
       {user ? (
         <Route element={<Layout />}>
           <Route element={<RequireOrganisation />}>

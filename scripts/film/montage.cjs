@@ -5,7 +5,8 @@ const path = require("path");
 const { execFileSync } = require("child_process");
 
 const dir = process.argv[2];
-const out = process.argv[3];
+// ffmpeg draait in de map van de opname; het pad van de film staat daar los van.
+const out = path.resolve(process.argv[3]);
 const { subs } = JSON.parse(fs.readFileSync(path.join(dir, "captions.json"), "utf8"));
 const FONT = "/usr/share/fonts/opentype/inter/Inter-SemiBold.otf";
 const W = 1920;

@@ -46,13 +46,34 @@ const page = (title, body) => `<!doctype html><html lang="nl"><meta charset="utf
   td, th { text-align: left; padding: 5pt 8pt; border-bottom: 1px solid #e1e7ec; } td:last-child, th:last-child { text-align: right; }
 </style><h1>${title}</h1>${body}</html>`;
 
+// Drie pagina's, zodat de film kan laten zien hoe je door een stuk bladert.
 const GROENPLAN = page(
   "Voorstel groenplan binnentuin",
   `<div class="sub">Werkgroep Groen, Bewonerscommissie De Linde. Voor het bestuursoverleg.</div>
   <h2>Aanleiding</h2><p>De binnentuin bestaat nu vooral uit tegels en wordt weinig gebruikt. Uit de bewonersenquête blijkt dat bewoners meer groen, een plek om te zitten en betere verlichting willen.</p>
   <h2>Het plan</h2><ul><li>Drie plantvakken met inheemse beplanting en twee bomen.</li><li>Een zitplek bij de ingang, toegankelijk voor rolstoel en rollator.</li><li>Het onderhoud doet een groep van acht bewoners, met een rooster per maand.</li></ul>
-  <h2>Kosten en planning</h2><p>Het plan kost € 4.800. Daarvan is € 1.500 als subsidie aangevraagd bij het buurtfonds. De aanleg start in maart 2027.</p>
-  <h2>Gevraagd besluit</h2><p>De werkgroep vraagt het bestuur in te stemmen met het plan en het budget van € 4.800 vrij te geven.</p>`,
+  <h2>Gevraagd besluit</h2><p>De werkgroep vraagt het bestuur in te stemmen met het plan en het budget van € 4.800 vrij te geven.</p>
+  <div style="page-break-before: always"></div>
+  <h1>Schets van de binnentuin</h1><div class="sub">Indeling na de herinrichting. Niet op schaal.</div>
+  <svg viewBox="0 0 640 420" width="100%" style="border:1px solid #c5cfd9;border-radius:8px;background:#f5f7f9">
+    <rect x="20" y="20" width="600" height="380" rx="10" fill="#eef2f5" stroke="#c5cfd9"/>
+    <rect x="50" y="50" width="170" height="110" rx="12" fill="#bfe3c6" stroke="#4d9a5f"/><text x="135" y="110" text-anchor="middle" font-size="15" fill="#1f5c2e">Plantvak 1</text>
+    <rect x="420" y="50" width="170" height="110" rx="12" fill="#bfe3c6" stroke="#4d9a5f"/><text x="505" y="110" text-anchor="middle" font-size="15" fill="#1f5c2e">Plantvak 2</text>
+    <rect x="50" y="260" width="250" height="110" rx="12" fill="#bfe3c6" stroke="#4d9a5f"/><text x="175" y="320" text-anchor="middle" font-size="15" fill="#1f5c2e">Plantvak 3</text>
+    <circle cx="320" cy="105" r="34" fill="#7cc08a" stroke="#2f7a43"/><text x="320" y="110" text-anchor="middle" font-size="13" fill="#103d1c">Boom</text>
+    <circle cx="390" cy="315" r="34" fill="#7cc08a" stroke="#2f7a43"/><text x="390" y="320" text-anchor="middle" font-size="13" fill="#103d1c">Boom</text>
+    <rect x="470" y="270" width="120" height="90" rx="10" fill="#f6dfb3" stroke="#c9963a"/><text x="530" y="320" text-anchor="middle" font-size="15" fill="#6b4a12">Zitplek</text>
+    <path d="M320 400 V210 H250" fill="none" stroke="#8a97a5" stroke-width="10" stroke-linecap="round" stroke-dasharray="2 16"/>
+    <text x="320" y="392" text-anchor="middle" font-size="12" fill="#5a6b7d">Ingang</text>
+  </svg>
+  <div style="page-break-before: always"></div>
+  <h1>Kosten en planning</h1><div class="sub">Bedragen inclusief btw.</div>
+  <table><tr><th>Onderdeel</th><th>Kosten</th></tr>
+  <tr><td>Grondwerk en plantvakken</td><td>€ 1.900</td></tr><tr><td>Beplanting en twee bomen</td><td>€ 1.450</td></tr>
+  <tr><td>Zitplek en verharding</td><td>€ 1.150</td></tr><tr><td>Verlichting</td><td>€ 300</td></tr>
+  <tr><td><strong>Totaal</strong></td><td><strong>€ 4.800</strong></td></tr></table>
+  <h2>Dekking</h2><p>Bij het buurtfonds is € 1.500 subsidie aangevraagd. De rest komt uit de reserve van de commissie.</p>
+  <h2>Planning</h2><ul><li>Januari: offertes van drie hoveniers.</li><li>Februari: keuze en opdracht.</li><li>Maart 2027: aanleg, met een plantdag voor bewoners.</li></ul>`,
 );
 const BEGROTING = page(
   "Conceptbegroting 2027",

@@ -1204,6 +1204,104 @@ step("5g. Besloten overleg en besloten kring");
   check("herstel staat in het logboek", (await admin.get("/api/audit")).data.entries.some((e) => e.action === "POST /api/organisations/:id/besloten/:overlegId/secretaris"));
 }
 
+step("5h. Stuk op het scherm, presentatiescherm en meekijken zonder account");
+{
+  const livePath = `/api/meetings/${meetingId}/live`;
+  const watchPath = `/api/meetings/${meetingId}/watch`;
+  const screenPath = `/api/meetings/${meetingId}/screen`;
+  const live = (body) => admin.post(livePath, body);
+  const docs = (await admin.get(`/api/meetings/${meetingId}`)).data.documents;
+  const pdf = docs.find((d) => d.name.endsWith(".pdf"));
+  const other = docs.find((d) => d.id !== pdf.id);
+  const fixed = (await admin.get(`/api/overleggen/${overlegId}`)).data.documents[0];
+
+  await live({ action: "stop" });
+  check("een stuk op het scherm kan alleen tijdens de vergadermodus", (await live({ action: "show", docId: pdf.id })).status === 409);
+  check("meekijken kan alleen tijdens de vergadermodus", (await admin.post(watchPath, { on: true })).status === 409);
+  await live({ action: "start" });
+  const shown = await live({ action: "show", docId: pdf.id });
+  check("secretaris zet een stuk op het scherm", shown.status === 200 && shown.data.liveDocId === pdf.id && shown.data.liveDocPage === 1 && shown.data.watchOn === false, JSON.stringify(shown.data));
+  check("bladeren naar een pagina", (await live({ action: "page", page: 3 })).data.liveDocPage === 3);
+  check("ongeldige pagina geweigerd", (await live({ action: "page", page: 0 })).status === 400);
+  const follow = (await dee.client.get(livePath)).data;
+  check("wie meeloopt, ziet hetzelfde stuk en dezelfde pagina", follow.liveDocId === pdf.id && follow.liveDocPage === 3);
+  check("een deelnemer kan het scherm niet bedienen", (await dee.client.post(livePath, { action: "show", docId: other.id })).status === 403 && (await dee.client.post(livePath, { action: "hide" })).status === 403);
+  check("alleen een stuk van deze vergadering kan op het scherm", (await live({ action: "show", docId: fixed.id })).status === 400);
+
+  const screen = await dee.client.get(screenPath);
+  check(
+    "presentatiescherm: agenda, actueel punt en het getoonde stuk",
+    screen.status === 200 && screen.data.items.length >= 3 && !!screen.data.live.itemId && screen.data.doc?.id === pdf.id && screen.data.live.docPage === 3 && screen.data.watch === null,
+    JSON.stringify(screen.data).slice(0, 300),
+  );
+  check("presentatiescherm niet voor buitenstaanders", (await bui.client.get(screenPath)).status === 404 && (await new Client().get(screenPath)).status === 401);
+
+  // Meekijken zonder account.
+  check("een deelnemer kan meekijken niet aanzetten of de code opvragen", (await dee.client.post(watchPath, { on: true })).status === 403 && (await dee.client.get(watchPath)).status === 403);
+  const on = await admin.post(watchPath, { on: true });
+  check("secretaris zet meekijken aan: een link en een korte code", on.status === 200 && /^[A-Za-z0-9_-]{24,64}$/.test(on.data.watch?.token) && /^[A-HJ-NP-Z2-9]{8}$/.test(on.data.watch?.code), JSON.stringify(on.data));
+  const { token, code } = on.data.watch;
+  const again = await admin.post(watchPath, { on: true });
+  check("nog eens aanzetten houdt dezelfde code", again.data.watch.code === code && again.data.watch.token === token);
+  check("de vergadermodus meldt dat meekijken aan staat", (await dee.client.get(livePath)).data.watchOn === true);
+  check("het presentatiescherm toont de code voor de zaal", (await dee.client.get(screenPath)).data.watch?.code === code);
+
+  const guest = new Client();
+  const res = await guest.raw("GET", `/api/meekijken/${token}`);
+  const text = await res.text();
+  const g = JSON.parse(text);
+  check("meekijker zonder account ziet het scherm", res.status === 200 && g.meeting.title === "MT week 48" && g.items.length >= 3 && g.doc.id === pdf.id && g.live.docPage === 3 && !!g.live.itemId, text.slice(0, 300));
+  check(
+    "meekijker krijgt geen notulen, besluiten, acties, andere stukken of namen van deelnemers",
+    !/xyzzy|vastgesteld|Offertes opvragen|Gelijktijdig besluit/.test(text) && !text.includes(other.name) && !text.includes(fixed.name) && !text.includes(dee.email) && !text.includes(code) && !("notes" in g.items[0]) && !("watch" in g),
+    text.slice(0, 400),
+  );
+  check(
+    "het antwoord voor meekijkers wordt kort door het netwerk gedeeld, niet door de browser bewaard",
+    /public, durable, max-age=1\b/.test(res.headers.get("netlify-cdn-cache-control") ?? "") && (res.headers.get("cache-control") ?? "").includes("max-age=0"),
+    `${res.headers.get("netlify-cdn-cache-control")} | ${res.headers.get("cache-control")}`,
+  );
+  const typed = await guest.post("/api/meekijken", { code: `${code.slice(0, 4)}-${code.slice(4).toLowerCase()}` });
+  check("de code intypen (met streepje en kleine letters) geeft dezelfde link", typed.status === 200 && typed.data.token === token, JSON.stringify(typed));
+  check("verkeerde code en verzonnen link", (await guest.post("/api/meekijken", { code: "AAAAAAAA" })).status === 404 && (await guest.get(`/api/meekijken/${"x".repeat(32)}`)).status === 404);
+
+  const part = await guest.raw("GET", `/api/meekijken/${token}/doc/${pdf.id}/0`);
+  check("meekijker haalt het getoonde stuk op", part.status === 200 && (await part.arrayBuffer()).byteLength > 1000 && /max-age=120/.test(part.headers.get("netlify-cdn-cache-control") ?? ""));
+  check("een ander stuk van de vergadering bestaat voor de meekijker niet", (await guest.raw("GET", `/api/meekijken/${token}/doc/${other.id}/0`)).status === 404);
+  check("de link geeft geen toegang tot de rest van het platform", (await guest.raw("GET", `/api/documents/${pdf.id}/chunks/0`)).status === 401 && (await guest.get(`/api/meetings/${meetingId}`)).status === 401);
+  await live({ action: "hide" });
+  check("van het scherm gehaald: het stuk is ook voor de meekijker weg", (await guest.raw("GET", `/api/meekijken/${token}/doc/${pdf.id}/0`)).status === 404 && (await guest.get(`/api/meekijken/${token}`)).data.doc === null);
+  await live({ action: "show", docId: pdf.id });
+  const moved = await live({ action: "goto", itemId: itemIds[2] });
+  check("naar een ander agendapunt: het stuk gaat van het scherm", moved.status === 200 && moved.data.liveDocId === null && moved.data.liveItemId === itemIds[2]);
+
+  // Niet bij een besloten overleg.
+  const bo = (await admin.post("/api/overleggen", { name: `Besloten scherm ${RUN}`, besloten: true })).data.id;
+  const bm = (await admin.post(`/api/overleggen/${bo}/meetings`, { title: "Besloten vergadering", startsAt, items: [{ title: "Enige punt" }] })).data.id;
+  await admin.patch(`/api/meetings/${bm}`, { status: "gepubliceerd" });
+  await admin.post(`/api/meetings/${bm}/live`, { action: "start" });
+  check("meekijken zonder account kan niet bij een besloten overleg", (await admin.post(`/api/meetings/${bm}/watch`, { on: true })).status === 409);
+  await admin.post(`/api/meetings/${bm}/live`, { action: "stop" });
+
+  // Stoppen.
+  check(
+    "meekijken stoppen: link en code werken niet meer",
+    (await admin.post(watchPath, { on: false })).data.watch === null && (await guest.get(`/api/meekijken/${token}`)).status === 404 && (await guest.post("/api/meekijken", { code })).status === 404,
+  );
+  const on2 = await admin.post(watchPath, { on: true });
+  check("opnieuw aanzetten geeft een nieuwe link en code", on2.data.watch.code !== code && on2.data.watch.token !== token);
+  await live({ action: "show", docId: pdf.id });
+  await live({ action: "stop" });
+  check(
+    "vergadermodus beëindigd: het meekijken en het stuk op het scherm vervallen",
+    (await guest.get(`/api/meekijken/${on2.data.watch.token}`)).status === 404 && (await admin.get(watchPath)).data.watch === null && (await admin.get(livePath)).data.liveDocId === null && (await admin.get(livePath)).data.watchOn === false,
+  );
+  check("meekijken in het logboek", (await admin.get("/api/audit")).data.entries.some((e) => e.action === "POST /api/meetings/:id/watch"));
+  let last;
+  for (let i = 0; i < 22; i++) last = await guest.post("/api/meekijken", { code: `BBBBBB${String(i + 22)}` });
+  check("codes raden wordt afgeremd", last.status === 429, `${last.status}`);
+}
+
 step("6. Afronden, vergrendeling en overnemen");
 let nextMeetingId;
 {
@@ -1316,7 +1414,7 @@ step("7b. Back-up en locatie van de gegevens");
   check("elke tabel compleet opgehaald", plan.data.tables.every((t) => backup.tables[t.name].length === t.rows), plan.data.tables.map((t) => `${t.name}:${t.rows}/${backup.tables[t.name].length}`).join(" "));
   const me = backup.tables.users.find((u) => u.email === adminCreds.email);
   check("rijen staan er zoals de database ze kent", !!me && typeof me.password_hash === "string" && me.is_admin === true && !("passwordHash" in me));
-  check("stand van de vergadermodus gaat niet mee", backup.tables.meetings.length > 0 && backup.tables.meetings.every((m) => !("live_item_id" in m)));
+  check("stand van de vergadermodus gaat niet mee", backup.tables.meetings.length > 0 && backup.tables.meetings.every((m) => !("live_item_id" in m) && !("live_doc_id" in m) && !("watch_token" in m) && !("watch_code" in m)));
   check("hoofdpunten staan vóór hun subpunten", (() => {
     const seen = new Set();
     return backup.tables.agenda_items.every((i) => (seen.add(i.id), !i.parent_id || seen.has(i.parent_id)));

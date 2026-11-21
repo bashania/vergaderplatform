@@ -3,7 +3,10 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth, useUser } from "../auth";
 import { DocList, UploadButton } from "../components/Docs";
+import { canStage, DocStage } from "../components/DocStage";
 import { ActionItem, ActionModal, DecisionModal } from "../components/Records";
+import { LiveTimer } from "../components/Screen";
+import { WatchModal } from "../components/Watch";
 import { agendaOrder, fmtClock, fmtTime, labelTone, type Action, type AgendaItem, type Decision, type Doc, type LiveState, type MeetingDetail } from "../lib";
 import { Button, Icon, Loader, useLoad, useRun, useToast } from "../ui";
 
@@ -92,6 +95,9 @@ export default function LivePage() {
   /** Een deelnemer die zelf door de agenda bladert, kijkt naar dit punt in plaats van het actuele. */
   const [viewId, setViewId] = useState<string | null>(null);
   const [modal, setModal] = useState<ModalState>(null);
+  /** Aantal pagina's van het stuk dat op het scherm staat (0 zolang dat niet bekend is). */
+  const [pages, setPages] = useState(0);
+  const [watchOpen, setWatchOpen] = useState(false);
   const version = useRef<string | null>(null);
 
   const apply = useCallback(
@@ -154,13 +160,17 @@ export default function LivePage() {
   }, [isLive]);
 
   const send = useCallback(
-    async (action: "start" | "goto" | "stop", itemId?: string) => {
-      const ok = await run(async () => apply(await api<LiveState>(`/api/meetings/${id}/live`, { method: "POST", body: { action, itemId } })));
-      if (ok) setViewId(null);
+    async (action: "start" | "goto" | "stop" | "show" | "page" | "hide", itemId?: string, doc?: { docId?: string; page?: number }) => {
+      const ok = await run(async () => apply(await api<LiveState>(`/api/meetings/${id}/live`, { method: "POST", body: { action, itemId, ...doc } })));
+      if (ok && (action === "start" || action === "goto" || action === "stop")) setViewId(null);
       return ok;
     },
     [id, run, apply],
   );
+
+  // Een ander stuk op het scherm: het aantal pagina's is pas bekend als het is geopend.
+  const liveDocId = live?.liveDocId ?? null;
+  useEffect(() => setPages(0), [liveDocId]);
 
   const isSec = data?.role === "secretaris";
   const order = data ? agendaOrder(data.items) : [];
@@ -174,6 +184,15 @@ export default function LivePage() {
       const el = e.target as HTMLElement;
       if (el.closest("input, textarea, select, dialog") || e.altKey || e.ctrlKey || e.metaKey) return;
       const step = e.key === "ArrowRight" || e.key === "PageDown" ? 1 : e.key === "ArrowLeft" || e.key === "PageUp" ? -1 : 0;
+      // Staat er een stuk op het scherm, dan bladeren de pijltjes door dat stuk.
+      if (live?.liveDocId) {
+        const to = (live.liveDocPage ?? 1) + step;
+        if (step && to >= 1 && (!pages || to <= pages)) {
+          e.preventDefault();
+          void send("page", undefined, { page: to });
+        }
+        return;
+      }
       const target = step ? order[liveIndex + step] : undefined;
       if (target) {
         e.preventDefault();
@@ -214,6 +233,21 @@ export default function LivePage() {
   const total = live?.liveStartedAt ? Math.max(0, (serverNow - Date.parse(live.liveStartedAt)) / 1000) : 0;
 
   const canManageDoc = (d: Doc) => !locked && (isSec || d.uploadedBy === user.id);
+  // Het stuk dat de secretaris op het scherm heeft gezet; wie meeloopt, ziet het bovenaan het punt.
+  const stageDoc = isLive && live?.liveDocId ? (documents.find((d) => d.id === live.liveDocId) ?? null) : null;
+  const stagePage = live?.liveDocPage ?? 1;
+  const stageButton = (d: Doc) =>
+    canSteer && isLive && canStage(d) ? (
+      live?.liveDocId === d.id ? (
+        <Button variant="secondary" small icon="x" onClick={() => void send("hide")}>
+          <span className="doc-label">Van het scherm</span>
+        </Button>
+      ) : (
+        <Button variant="secondary" small icon="eye" title="Toon dit stuk op het scherm; wie meeloopt of meekijkt, ziet het ook" onClick={() => void send("show", undefined, { docId: d.id })}>
+          <span className="doc-label">Op het scherm</span>
+        </Button>
+      )
+    ) : null;
   const saved = () => {
     setModal(null);
     void reload();
@@ -259,9 +293,26 @@ export default function LivePage() {
           )}
         </div>
         <div className="row">
+          {isLive && (
+            <a
+              className="btn secondary small"
+              href={`/vergaderingen/${meeting.id}/scherm`}
+              target="_blank"
+              rel="noopener"
+              title="Presentatiescherm in een nieuw venster, voor de beamer of het grote scherm: zonder notulen"
+            >
+              <Icon name="video" size={16} />
+              <span className="hide-narrow">Presentatiescherm</span>
+            </a>
+          )}
+          {canSteer && isLive && (
+            <Button variant="secondary" small icon="users" title="Laat aanwezigen meekijken met een QR-code of code" onClick={() => setWatchOpen(true)}>
+              <span className="hide-narrow">{live?.watchOn ? "Meekijken staat aan" : "Meekijken"}</span>
+            </Button>
+          )}
           {canSteer && isLive && (
             <Button variant="secondary" small icon="stop" onClick={() => void stop()}>
-              Beëindigen
+              <span className="hide-narrow">Beëindigen</span>
             </Button>
           )}
           <Link className="btn ghost small" to={`/vergaderingen/${meeting.id}`} aria-label="Vergadermodus sluiten">
@@ -345,6 +396,37 @@ export default function LivePage() {
                   </Button>
                 </div>
               )}
+              {following && stageDoc && (
+                <div className="sub">
+                  <div className="stage-bar">
+                    <span className="sub-label">Op het scherm</span>
+                    <strong>{stageDoc.name}</strong>
+                    {pages > 1 && (
+                      <span className="muted small">
+                        pagina {Math.min(stagePage, pages)} van {pages}
+                      </span>
+                    )}
+                    <span className="grow" />
+                    {canSteer && (
+                      <>
+                        <Button small variant="secondary" icon="left" disabled={stagePage <= 1} aria-label="Vorige pagina" onClick={() => void send("page", undefined, { page: stagePage - 1 })} />
+                        <Button
+                          small
+                          variant="secondary"
+                          icon="right"
+                          disabled={!pages || stagePage >= pages}
+                          aria-label="Volgende pagina"
+                          onClick={() => void send("page", undefined, { page: stagePage + 1 })}
+                        />
+                        <Button small variant="ghost" icon="x" onClick={() => void send("hide")}>
+                          Van het scherm
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                  <DocStage key={stageDoc.id} doc={stageDoc} page={stagePage} chunkUrl={(n) => `/api/documents/${stageDoc.id}/chunks/${n}`} onPages={setPages} />
+                </div>
+              )}
               <div className="live-head">
                 <span className="live-nr">{shown.number}</span>
                 <div className="grow">
@@ -362,7 +444,7 @@ export default function LivePage() {
               {(documents.some((d) => d.agendaItemId === shown.item.id) || !locked) && (
                 <div className="sub">
                   <span className="sub-label">Stukken</span>
-                  <DocList docs={documents.filter((d) => d.agendaItemId === shown.item.id)} canManage={canManageDoc} onChanged={reload} />
+                  <DocList docs={documents.filter((d) => d.agendaItemId === shown.item.id)} canManage={canManageDoc} onChanged={reload} extra={stageButton} />
                   {!locked && (
                     <div>
                       <UploadButton variant="ghost" target={{ meetingId: meeting.id, agendaItemId: shown.item.id }} onDone={reload} />
@@ -436,7 +518,7 @@ export default function LivePage() {
               <Button variant="secondary" icon="left" disabled={!prev} onClick={() => prev && void send("goto", prev.item.id)}>
                 Vorige
               </Button>
-              <span className="muted small hide-narrow">Pijltjestoetsen werken ook</span>
+              <span className="muted small hide-narrow">{stageDoc ? "Pijltjestoetsen bladeren door het stuk" : "Pijltjestoetsen werken ook"}</span>
               {next ? (
                 <Button onClick={() => void send("goto", next.item.id)}>
                   Volgende: {next.number} {next.item.title}
@@ -456,30 +538,19 @@ export default function LivePage() {
         </footer>
       )}
 
+      {watchOpen && (
+        <WatchModal
+          meetingId={meeting.id}
+          besloten={!!meeting.besloten}
+          onClose={() => setWatchOpen(false)}
+          onChanged={() => void api<LiveState>(`/api/meetings/${id}/live`).then(apply).catch(() => {})}
+        />
+      )}
       {modal?.type === "decision" && shown && (
         <DecisionModal meetingId={meeting.id} agendaItemId={shown.item.id} decision={modal.decision} onClose={() => setModal(null)} onSaved={saved} />
       )}
       {modal?.type === "action" && shown && (
         <ActionModal meetingId={meeting.id} agendaItemId={shown.item.id} action={modal.action} members={members} onClose={() => setModal(null)} onSaved={saved} />
-      )}
-    </div>
-  );
-}
-
-/** Besteed versus gepland; kleurt mee als het punt uitloopt. */
-function LiveTimer({ seconds, plannedMin, running }: { seconds: number; plannedMin: number | null; running: boolean }) {
-  if (!running && seconds === 0 && !plannedMin) return null;
-  const planned = (plannedMin ?? 0) * 60;
-  const ratio = planned ? seconds / planned : 0;
-  const tone = planned && ratio > 1 ? "over" : planned && ratio > 0.8 ? "warn" : "";
-  return (
-    <div className={`live-timer ${tone}`} aria-label="Tijd voor dit punt">
-      <span className="num">{running || seconds > 0 ? fmtClock(seconds) : `${plannedMin} min`}</span>
-      {planned > 0 && (running || seconds > 0) && <span className="small">van {plannedMin} min</span>}
-      {planned > 0 && (
-        <div className="bar">
-          <div style={{ width: `${Math.min(100, ratio * 100)}%` }} />
-        </div>
       )}
     </div>
   );
