@@ -271,6 +271,16 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
   );
 }
 
+/** Kenmerk van een besloten overleg. */
+export function BeslotenBadge() {
+  return (
+    <span className="badge info" title="Alleen de deelnemers zien dit overleg; beheerders van de organisatie niet.">
+      <Icon name="lock" size={12} />
+      Besloten
+    </span>
+  );
+}
+
 export function Empty({ title, children }: { title: string; children?: ReactNode }) {
   return (
     <div className="empty">

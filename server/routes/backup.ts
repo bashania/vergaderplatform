@@ -22,7 +22,8 @@ const TABLES: Table[] = [
   { name: "users", order: "id", page: 300 },
   { name: "organisations", order: "id", page: 300 },
   { name: "organisation_admins", order: "organisation_id, user_id", page: 500 },
-  { name: "overleggen", order: "id", page: 300 },
+  // Een besloten kring verwijst naar het overleg waar hij bij hoort: die eerst.
+  { name: "overleggen", order: "(parent_id IS NOT NULL), id", page: 300 },
   { name: "memberships", order: "overleg_id, user_id", page: 500 },
   // De stand van de vergadermodus verwijst naar een agendapunt en gaat niet mee: na terugzetten loopt er geen vergadering.
   { name: "meetings", order: "id", page: 100, strip: ["live_started_at", "live_item_id", "live_item_started_at"] },
@@ -40,7 +41,7 @@ const TABLES: Table[] = [
   { name: "transcripts", order: "meeting_id", page: 3 },
   { name: "passkeys", order: "id", page: 300 },
   { name: "plaud_connections", order: "user_id", page: 300 },
-  { name: "settings", order: "key", page: 300, where: "key NOT LIKE 'restore.%' AND key <> 'daily.last'" },
+  { name: "settings", order: "key", page: 300, where: "key NOT LIKE 'restore.%' AND key NOT LIKE 'selftest.%' AND key <> 'daily.last'" },
   { name: "audit_log", order: "id", page: 500 },
 ];
 const NAMES = TABLES.map((t) => t.name);

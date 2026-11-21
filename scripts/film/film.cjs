@@ -4,6 +4,8 @@
 const { chromium } = require("playwright");
 const fs = require("fs");
 const path = require("path");
+const { simpleParser } = require("mailparser");
+const { SMTPServer } = require("smtp-server");
 
 const BASE = process.env.BASE ?? "http://localhost:8888";
 const OUT = process.argv[2];
@@ -87,6 +89,16 @@ function overlay() {
 }
 
 (async () => {
+  // Nagebouwde mailserver: vangt de e-mail op die het platform in de film verstuurt.
+  const inbox = [];
+  const smtp = new SMTPServer({
+    authOptional: true,
+    disabledCommands: ["STARTTLS"],
+    onAuth: (a, _s, done) => done(null, { user: a.username }),
+    onData: (stream, _s, done) => simpleParser(stream).then((m) => (inbox.push(m), done()), done),
+  });
+  await new Promise((r) => smtp.listen(2525, r));
+
   const browser = await chromium.launch({ args: ["--lang=nl-NL"], env: { ...process.env, LANG: "nl_NL.UTF-8", LANGUAGE: "nl" } });
   const context = await browser.newContext({
     viewport: { width: 1280, height: 720 },
@@ -156,7 +168,7 @@ function overlay() {
 
   await page.goto(BASE + "/");
   await page.getByRole("heading", { level: 1 }).first().waitFor();
-  await card(title("Vergaderplatform", "Vergaderen met agenda, stukken, besluiten en acties bij de hand"));
+  await card(title("Vergaderplatform", "Van agenda tot afgeronde actie, in één omgeving"));
   await page.mouse.move(mouse.x, mouse.y);
   if (REC) await cdp.send("Page.startScreencast", { format: "jpeg", quality: 93, maxWidth: 1920, maxHeight: 1080, everyNthFrame: 1 });
   await wait(2800);
@@ -166,10 +178,21 @@ function overlay() {
   await caption("Na het inloggen zie je je vergaderingen, je acties en de nieuwste stukken.");
   await wait(3600);
   await shot("overzicht");
+
+  // 2. Voorbereiden: een aangedragen punt op de agenda zetten
+  await click(page.locator(".nav").getByRole("link", { name: "Overleggen" }));
+  await click(page.getByRole("link", { name: "Bestuursoverleg", exact: true }));
+  await page.getByRole("heading", { name: "Aangedragen agendapunten" }).waitFor();
+  await caption("Deelnemers dragen zelf agendapunten aan. De secretaris zet ze met één klik op de agenda.");
+  await hover(page.getByText("Fietsenstalling uitbreiden").first());
+  await wait(3000);
+  await shot("aangedragen");
+  await click(page.getByRole("button", { name: "Op de agenda" }));
+  await wait(2200);
   await click(page.getByRole("link", { name: "Bestuursoverleg november" }).first());
   await page.getByRole("heading", { name: "Bestuursoverleg november" }).waitFor();
 
-  // 2. Vergadering met agenda en stukken
+  // 3. Vergadering met agenda en stukken
   await caption("Agenda en stukken staan bij elkaar. Elke deelnemer kan er altijd bij.");
   await wait(2200);
   const doc = page.locator(".doc", { hasText: "Voorstel groenplan" });
@@ -178,12 +201,37 @@ function overlay() {
   await shot("vergadering");
 
   // 3. Samenvatting door de AI-assistent
-  await caption("Nieuw: de AI-assistent vat een stuk samen, zodat je weet waar je op moet letten.");
+  await caption("De AI-assistent vat een stuk samen, zodat je weet waar je op moet letten.");
   await click(doc.getByRole("button", { name: "Samenvatting" }));
   await page.locator(".ai-text").waitFor();
   await wait(5600);
   await shot("samenvatting");
   await click(page.locator("dialog[open]").getByRole("button", { name: "Sluiten", exact: true }).last());
+
+  // De agenda mailen, en aanmelden vanuit de e-mail
+  await page.evaluate(() => document.querySelector(".main")?.scrollTo({ top: 0, behavior: "smooth" }) ?? window.scrollTo({ top: 0, behavior: "smooth" }));
+  await caption("Verstuur de agenda naar alle deelnemers. De afspraak voor hun eigen agenda zit erbij.");
+  await click(page.getByRole("button", { name: "Agenda mailen" }));
+  await wait(1600);
+  await click(page.locator("dialog[open]").getByRole("button", { name: /Versturen naar/ }));
+  await page.locator("dialog[open]").getByText(/verstuurd/).waitFor();
+  await wait(1800);
+  await shot("agenda-gemaild");
+  await click(page.locator("dialog[open]").getByRole("button", { name: "Klaar" }));
+  const mail = inbox.find((m) => m.to.value[0].address === "karim@delinde.example");
+  const rsvp = (mail?.text.match(/https?:\/\/\S+\/aanwezigheid#\S+~ja/) ?? [])[0];
+  if (!rsvp) throw new Error("geen aanmeldlink in de e-mail aan Karim: " + inbox.map((m) => m.subject).join(" | "));
+  await caption("Een deelnemer meldt zich aan of af met één klik in die mail. Inloggen hoeft daarvoor niet.");
+  await page.goto(rsvp);
+  await page.getByRole("button", { name: /erbij/i }).first().waitFor();
+  await wait(1500);
+  await click(page.getByRole("button", { name: /erbij/i }).first());
+  await page.getByText("Je bent aangemeld.").waitFor();
+  await wait(2600);
+  await shot("aangemeld");
+  await page.goto(`${BASE}/vergaderingen/${demo.meeting}`);
+  await page.getByRole("heading", { name: "Bestuursoverleg november" }).waitFor();
+  await page.mouse.move(mouse.x, mouse.y);
 
   // 4. Vergadermodus starten
   await page.evaluate(() => document.querySelector(".main")?.scrollTo({ top: 0, behavior: "smooth" }) ?? window.scrollTo({ top: 0, behavior: "smooth" }));
@@ -222,7 +270,7 @@ function overlay() {
   await click(page.locator(".live-top").getByRole("button", { name: "Beëindigen" }));
   await page.getByRole("button", { name: "Voorstellen uit notulen" }).waitFor();
   await wait(900);
-  await caption("Nieuw: laat besluiten en acties voorstellen uit je notulen.");
+  await caption("Laat besluiten en acties voorstellen uit je notulen.");
   await click(page.getByRole("button", { name: "Voorstellen uit notulen" }));
   await page.locator(".proposal").first().waitFor();
   await wait(1200);
@@ -246,10 +294,42 @@ function overlay() {
   await wait(3600);
   await shot("afgerond");
 
-  // 10. Afsluiting
+  // 10. Terugvinden: vraag het archief
+  await caption("Maanden later nog weten wat er is besloten? Zoek, of stel je vraag aan het archief.");
+  await click(page.getByPlaceholder("Zoeken"));
+  await page.keyboard.type("groenplan", { delay: FAST ? 0 : 60 });
+  await page.keyboard.press("Enter");
+  await page.getByRole("heading", { name: "Vraag het archief" }).waitFor();
+  await wait(1800);
+  await click(page.getByLabel("Vraag aan het archief"));
+  await page.keyboard.type("Is het groenplan goedgekeurd, en wie regelt de offertes?", { delay: FAST ? 0 : 34 });
+  await click(page.getByRole("button", { name: "Vraag", exact: true }));
+  await page.locator(".note.pre").waitFor();
+  await wait(5200);
+  await shot("archief");
+
+  // 11. Vertrouwelijk: een besloten kring
+  await caption("Vertrouwelijk onderwerp? Maak een besloten kring bij het overleg.");
+  await click(page.locator(".nav").getByRole("link", { name: "Overleggen" }));
+  await click(page.getByRole("link", { name: "Bestuursoverleg", exact: true }));
+  await click(page.getByRole("link", { name: "Deelnemers" }));
+  await click(page.getByRole("button", { name: "Besloten kring maken" }));
+  const kring = page.locator("dialog[open]");
+  await kring.getByLabel("Naam").waitFor();
+  await wait(900);
+  await click(kring.getByLabel("Lotte de Boer"));
+  await caption("Alleen wie je kiest, ziet de kring. Ook beheerders van de organisatie niet.");
+  await wait(3400);
+  await shot("kring-maken");
+  await click(kring.getByRole("button", { name: "Kring maken" }));
+  await page.getByRole("heading", { name: "Bestuursoverleg (besloten)" }).waitFor();
+  await wait(3200);
+  await shot("kring");
+
+  // 12. Afsluiting
   await caption("");
-  await card(title("Zelf aan de slag", "De AI-assistent zet je per organisatie aan onder Toegang en beheer.<br>De vergadermodus staat bij elke gepubliceerde vergadering."));
-  await wait(4200);
+  await card(title("Zelf aan de slag", "Uitleg per rol staat in het menu.<br>Ook: stemrondes buiten de vergadering, concept-notulen uit een opname en inzicht voor de beheerder."));
+  await wait(4600);
   await shot("slot");
 
   if (REC) {
@@ -269,6 +349,7 @@ function overlay() {
     console.log(`${frames.length} beelden, ${(frames[frames.length - 1].t - frames[0].t).toFixed(1)} s`);
   }
   await browser.close();
+  await new Promise((r) => smtp.close(r));
   if (problems.length) {
     console.log("PROBLEMEN IN DE BROWSER:\n" + problems.join("\n"));
     process.exitCode = 1;

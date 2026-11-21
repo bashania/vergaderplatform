@@ -76,6 +76,24 @@ const step = (s) => console.log(`\n${s}`);
 const admin = new Client();
 const adminCreds = { email: "beheer@test.example", password: "een-lang-testwachtwoord" };
 
+step("0. Bewaking: de health-controle start een zelftest als er nog geen is");
+{
+  const first = await new Client().get("/api/health");
+  check("health werkt op een leeg platform", first.status === 200 && first.data.db === "ok", JSON.stringify(first.data));
+  if (first.data.zelftest === null) {
+    let z = null;
+    for (let i = 0; i < 40 && !z; i++) {
+      await new Promise((r) => setTimeout(r, 500));
+      z = (await new Client().get("/api/health")).data.zelftest;
+    }
+    check("de zelftest is in de achtergrond gedaan en de uitslag staat in health", z?.door === "bewaking" && z.db === "ok" && z.blobs === "ok" && z.ai === "ok" && z.mail === "uit" && !Number.isNaN(Date.parse(z.op)), JSON.stringify(z));
+    const again = (await new Client().get("/api/health")).data.zelftest;
+    check("een verse uitslag start geen nieuwe zelftest", again.op === z?.op);
+  } else {
+    console.log("  (database was al gevuld: de start vanuit health is niet opnieuw getest)");
+  }
+}
+
 step("1. Inrichting en inloggen");
 let org1;
 {
@@ -801,6 +819,7 @@ step("5d. Agenda-abonnement, punten aandragen en e-mail");
 
   // --- e-mail: nagebouwde mailserver vangt alles op ---
   const inbox = [];
+  const systemMails = [];
   const logins = [];
   const smtp = new SMTPServer({
     authOptional: true,
@@ -810,7 +829,8 @@ step("5d. Agenda-abonnement, punten aandragen en e-mail");
       logins.push(`${auth.username}:${auth.password}`);
       done(null, { user: auth.username });
     },
-    onData: (stream, _session, done) => simpleParser(stream).then((mail) => (inbox.push(mail), done()), done),
+    // Berichten van de zelftest (aan de platformbeheerder) apart: de tests hieronder tellen de herinneringen.
+    onData: (stream, _session, done) => simpleParser(stream).then((mail) => (((mail.subject ?? "").startsWith("Systeemcontrole") ? systemMails : inbox).push(mail), done()), done),
   });
   await new Promise((r) => smtp.listen(2525, r));
   const to = (mail) => mail.to.value[0].address;
@@ -896,6 +916,16 @@ step("5d. Agenda-abonnement, punten aandragen en e-mail");
   const deeMails = inbox.filter((m) => to(m) === dee.email);
   check("wie al heeft gereageerd, krijgt die vraag niet opnieuw", !deeMails.some((m) => m.text.includes("Ben je erbij?")));
   check("herinnering voor de vergadering van morgen", deeMails.some((m) => m.subject.startsWith("Morgen: MT week 48") && m.text.includes("Uitzetten kan onder Mijn account")), inbox.map((m) => `${to(m)}: ${m.subject}`).join(" | "));
+  // De taak deed ook de zelftest. Plaud is hier onbereikbaar: de platformbeheerder krijgt daar één keer per dag bericht van.
+  for (let i = 0; i < 40 && systemMails.length < 1; i++) await new Promise((r) => setTimeout(r, 250));
+  await new Promise((r) => setTimeout(r, 1200));
+  check(
+    "zelftest: de platformbeheerder krijgt één bericht over wat niet werkt",
+    systemMails.length === 1 && to(systemMails[0]) === adminCreds.email && systemMails[0].subject === "Systeemcontrole: Koppeling met Plaud werkt niet" && systemMails[0].text.includes("/beheer?tab=instellingen"),
+    systemMails.map((m) => `${to(m)}: ${m.subject}`).join(" | "),
+  );
+  const afterTask = await admin.get("/api/admin/system/last");
+  check("zelftest: de dagelijkse taak bewaart de uitslag", afterTask.data.last?.by === "taak" && afterTask.data.last.checks.find((x) => x.key === "daily").status === "ok", JSON.stringify(afterTask.data.last?.by));
   const digest = deeMails.find((m) => m.subject.startsWith("Je acties"));
   check("overzicht van aflopende en verlopen acties", !!digest && digest.text.includes("Cijfers aanleveren") && digest.text.includes("morgen") && digest.text.includes("Offertes opvragen") && digest.text.includes(`${BASE}/acties`), digest?.text.slice(0, 500));
   check("niemand anders dan de actiehouder krijgt het overzicht", inbox.filter((m) => m.subject.startsWith("Je acties")).length === 1);
@@ -1016,8 +1046,162 @@ step("5f. Stemrondes en systeemcontrole");
   check("onbereikbare mailserver wordt gemeld", broken.mail.status === "fout" && broken.mail.detail.includes("mailserver"), broken.mail.detail);
   await plaud.close();
   check("onbereikbare Plaud wordt gemeld", byKey(await admin.post("/api/admin/system/check")).plaud.status === "fout");
+
+  // --- zelftest: de uitslag blijft bewaard en is zichtbaar voor wie hem nodig heeft ---
+  const lastCheck = await admin.get("/api/admin/system/last");
+  check("laatste uitslag bewaard", lastCheck.status === 200 && lastCheck.data.last.by === "beheerder" && byKey({ data: lastCheck.data.last }).plaud.status === "fout", JSON.stringify(lastCheck.data.last?.by));
+  check("laatste uitslag alleen voor de platformbeheerder", (await dee.client.get("/api/admin/system/last")).status === 403);
+  const issues = (await admin.get("/api/session")).data.systemIssues;
+  check("de platformbeheerder ziet in de sessie wat niet werkt", issues.includes("Koppeling met Plaud") && issues.includes("E-mail") && !issues.includes("Database"), JSON.stringify(issues));
+  check("een deelnemer krijgt die melding niet", (await dee.client.get("/api/session")).data.systemIssues.length === 0);
+  const healthText = await (await new Client().raw("GET", "/api/health")).text();
+  const hz = JSON.parse(healthText).zelftest;
+  check("health toont de uitslag in grote lijnen, zonder toelichting", hz?.plaud === "fout" && hz.mail === "fout" && hz.db === "ok" && hz.door === "beheerder" && !/bereikbaar|weigert|localhost/.test(healthText), healthText.slice(0, 400));
+  const selftest = (key) => new Client().call("POST", "/api/background/selftest", { body: {}, headers: { "x-task-key": key } });
+  await selftest("verkeerde-sleutel");
+  await new Promise((r) => setTimeout(r, 1500));
+  check("zelftest in de achtergrond niet zonder de juiste sleutel", (await admin.get("/api/admin/system/last")).data.last.by === "beheerder");
+  await selftest(createHash("sha256").update("daily:lokale-sleutel-voor-tests").digest("hex"));
+  let byWatch = null;
+  for (let i = 0; i < 40 && byWatch !== "bewaking"; i++) {
+    await new Promise((r) => setTimeout(r, 400));
+    byWatch = (await admin.get("/api/admin/system/last")).data.last.by;
+  }
+  check("zelftest in de achtergrond met de sleutel van de taak", byWatch === "bewaking");
   await admin.del("/api/admin/mail");
   await new Promise((r) => smtp.close(r));
+}
+
+step("5g. Besloten overleg en besloten kring");
+{
+  // Het geval waar dit voor is: een raad van toezicht waarvan de bestuurder (hier: de beheerder van de
+  // organisatie) het besloten deel niet mag zien. Kenmerkwoord in alle inhoud; dat mag nergens bij hem opduiken.
+  const woord = `kwartsiet${RUN}`;
+  const rvt = (await admin.post("/api/overleggen", { name: `Raad van toezicht ${RUN}` })).data.id;
+  const ria = await addMember(admin, rvt, org1, "Ria Raad", `ria-${RUN}@test.example`, "secretaris");
+  const tes = await addMember(admin, rvt, org1, "Tes Toezicht", `tes-${RUN}@test.example`);
+  const nok = await addMember(admin, rvt, org1, "Nok Niet", `nok-${RUN}@test.example`);
+
+  check("deelnemer mag geen besloten kring maken", (await tes.client.post(`/api/overleggen/${rvt}/kring`, { name: "Stiekem", memberIds: [] })).status === 403);
+  check("kring alleen met deelnemers van het overleg", (await ria.client.post(`/api/overleggen/${rvt}/kring`, { name: "Met buitenstaander", memberIds: [dee.id] })).status === 400);
+  const made = await ria.client.post(`/api/overleggen/${rvt}/kring`, { name: `RvT besloten ${RUN}`, memberIds: [tes.id] });
+  check("secretaris maakt een besloten kring", made.status === 200 && !!made.data.id, JSON.stringify(made));
+  const kring = made.data.id;
+  check("een kring heeft zelf geen kring", (await ria.client.post(`/api/overleggen/${kring}/kring`, { name: "Dieper", memberIds: [] })).status === 400);
+
+  // Inhoud in de kring.
+  const kStart = new Date(Date.now() + 9 * 86400e3).toISOString();
+  const km = (await ria.client.post(`/api/overleggen/${kring}/meetings`, { title: `Vooroverleg ${woord}`, startsAt: kStart, durationMin: 30 })).data.id;
+  const ki = (await ria.client.post(`/api/meetings/${km}/items`, { title: `Beoordeling ${woord}`, kind: "Ter bespreking", durationMin: 20, presenter: "Ria", description: `Toelichting ${woord}` })).data.id;
+  await ria.client.patch(`/api/items/${ki}`, { notes: `Besproken: ${woord} in de notulen.` });
+  await ria.client.patch(`/api/meetings/${km}`, { status: "gepubliceerd" });
+  const kd = await ria.client.post(`/api/meetings/${km}/decisions`, { text: `Besluit over ${woord}.` });
+  const ka = await ria.client.post(`/api/meetings/${km}/actions`, { text: `Uitzoeken ${woord}`, ownerId: tes.id, dueDate: "2020-01-15" });
+  const kdoc = await ria.client.upload({ meetingId: km }, `Notitie ${woord}.txt`, "text/plain", Buffer.from(`inhoud ${woord}`));
+  await ria.client.post(`/api/overleggen/${kring}/suggestions`, { title: `Voorstel ${woord}` });
+  check("inhoud in de kring vastgelegd", !!km && !!ki && kd.status === 200 && ka.status === 200 && kdoc.status === 200, JSON.stringify([kd.status, ka.status, kdoc.status]));
+
+  // Wie in de kring zit, werkt er gewoon mee.
+  const tList = (await tes.client.get("/api/overleggen")).data.overleggen.find((o) => o.id === kring);
+  check("kringlid ziet de kring, met kenmerk besloten en het overleg waar hij bij hoort", tList?.besloten === true && tList.parentName === `Raad van toezicht ${RUN}` && tList.role === "deelnemer", JSON.stringify(tList));
+  const tDetail = await tes.client.get(`/api/overleggen/${kring}`);
+  check("kring: deelnemers en link naar het overleg", tDetail.status === 200 && tDetail.data.overleg.besloten === true && tDetail.data.overleg.isKring === true && tDetail.data.members.length === 2 && tDetail.data.parent?.id === rvt, JSON.stringify(tDetail.data.overleg));
+  check("het overleg toont de kring aan wie erin zit", (await tes.client.get(`/api/overleggen/${rvt}`)).data.kringen.map((k) => k.id).join() === kring);
+  const tMeeting = await tes.client.get(`/api/meetings/${km}`);
+  check("kringlid ziet de vergadering van de kring", tMeeting.status === 200 && tMeeting.data.meeting.besloten === true && tMeeting.data.items.length === 1 && tMeeting.data.decisions.length === 1);
+  check("kringlid vindt de inhoud terug", (await tes.client.get(`/api/search?q=${woord}`)).data.results.length >= 3 && (await tes.client.get("/api/dashboard")).data.myActions.some((a) => a.text.includes(woord)));
+
+  // Wie wel aan het overleg deelneemt maar niet in de kring zit, merkt er niets van.
+  const text = async (client, path) => (await client.raw("GET", path)).text();
+  const nokSees = (await Promise.all(["/api/overleggen", `/api/overleggen/${rvt}`, "/api/dashboard", "/api/decisions", "/api/actions?status=alle", `/api/search?q=${woord}`].map((p) => text(nok.client, p)))).join("\n");
+  check("deelnemer buiten de kring ziet de kring nergens", !nokSees.includes(woord) && !nokSees.includes(kring) && (await nok.client.get(`/api/overleggen/${kring}`)).status === 404 && (await nok.client.get(`/api/meetings/${km}`)).status === 404);
+
+  // De beheerder van de organisatie neemt deel aan het overleg, maar zit niet in de kring.
+  check("beheerder kan de kring niet openen", (await admin.get(`/api/overleggen/${kring}`)).status === 404);
+  const denied = await Promise.all([
+    admin.get(`/api/meetings/${km}`),
+    admin.get(`/api/meetings/${km}/live`),
+    admin.get(`/api/meetings/${km}/transcript`),
+    admin.raw("GET", `/api/documents/${kdoc.data.id}/file`),
+    admin.get(`/api/overleggen/${kring}/ballots`),
+    admin.get(`/api/overleggen/${kring}/suggestions`),
+    admin.post(`/api/overleggen/${kring}/members`, { email: adminCreds.email }),
+    admin.patch(`/api/overleggen/${kring}`, { besloten: false }),
+    admin.patch(`/api/overleggen/${kring}`, { archived: true }),
+    admin.post(`/api/overleggen/${kring}/meetings`, { title: "Inbreken", startsAt: kStart }),
+    admin.post(`/api/meetings/${km}/decisions`, { text: "x" }),
+    admin.post(`/api/meetings/${km}/mail`, { kind: "agenda" }),
+    admin.del(`/api/overleggen/${kring}/members/${tes.id}`),
+  ]);
+  check("beheerder komt er langs geen enkele weg in", denied.every((r) => r.status === 404), denied.map((r) => r.status).join());
+
+  await admin.patch(`/api/organisations/${org1}`, { aiEnabled: true });
+  const feedAdmin = await admin.post("/api/account/calendar");
+  const feedTes = await tes.client.post("/api/account/calendar");
+  const ask = { question: `Wat is er besloten over ${woord} in het vooroverleg?` };
+  const sweep = [
+    "/api/overleggen",
+    `/api/overleggen/${rvt}`,
+    "/api/dashboard",
+    "/api/decisions",
+    `/api/decisions?overleg=${kring}`,
+    "/api/actions?status=alle",
+    `/api/actions?overleg=${kring}&status=alle`,
+    `/api/search?q=${woord}`,
+    "/api/search?q=vooroverleg",
+    `/api/organisations/${org1}/insights?months=12`,
+    `/api/organisations/${org1}/start`,
+    "/api/session",
+    "/api/users",
+  ];
+  const adminSees = (await Promise.all(sweep.map((p) => text(admin, p)))).join("\n") + (await (await fetch(feedAdmin.data.url)).text()) + JSON.stringify((await admin.post("/api/ai/ask", ask)).data);
+  check("inhoud van de kring duikt nergens op bij de beheerder", !adminSees.includes(woord), sweep.filter(() => adminSees.includes(woord)).join(" "));
+  check("ook het bestaan van de kring staat niet in zijn overzichten", !adminSees.includes(kring) && !adminSees.includes(km));
+  const tesFeed = await (await fetch(feedTes.data.url)).text();
+  const tesAsk = await tes.client.post("/api/ai/ask", ask);
+  check("het kringlid krijgt de vergadering wel in agenda en archiefvraag", tesFeed.includes(woord) && tesAsk.status === 200 && tesAsk.data.sources.length >= 1, JSON.stringify(tesAsk.data).slice(0, 300));
+  await admin.patch(`/api/organisations/${org1}`, { aiEnabled: false });
+  await admin.del("/api/account/calendar");
+  await tes.client.del("/api/account/calendar");
+
+  // Wat de beheerder wel ziet: dat de kring bestaat, en wie eraan deelneemt.
+  const gov = await admin.get(`/api/organisations/${org1}/besloten`);
+  const g = gov.data.overleggen?.find((o) => o.id === kring);
+  check("beheer ziet dat de kring bestaat, met secretaris en aantal deelnemers", gov.status === 200 && g?.memberCount === 2 && g.secretarissen.join() === "Ria Raad" && g.mine === false && g.parentName === `Raad van toezicht ${RUN}`, JSON.stringify(g));
+  check("overzicht van besloten overleggen alleen voor beheerders", (await ria.client.get(`/api/organisations/${org1}/besloten`)).status === 403);
+  const person = (await admin.get(`/api/organisations/${org1}/people`)).data.people.find((p) => p.id === tes.id);
+  check("bij een persoon staat de kring als besloten, zonder toegang voor de beheerder", person.overleggen.some((o) => o.id === kring && o.besloten === true && o.open === false) && person.overleggen.some((o) => o.id === rvt && o.open === true), JSON.stringify(person.overleggen));
+  check("een secretaris aanwijzen kan niet zolang er een is", (await admin.post(`/api/organisations/${org1}/besloten/${kring}/secretaris`, { userId: nok.id })).status === 409);
+
+  // Er moet een secretaris overblijven: het beheer kan het niet overnemen.
+  check("laatste secretaris van een besloten overleg kan niet weg", (await ria.client.del(`/api/overleggen/${kring}/members/${ria.id}`)).status === 409 && (await ria.client.put(`/api/overleggen/${kring}/members/${ria.id}`, { role: "deelnemer" })).status === 409);
+  check("deelnemer verwijderen uit de kring kan wel", (await ria.client.del(`/api/overleggen/${kring}/members/${tes.id}`)).status === 200 && (await tes.client.get(`/api/overleggen/${kring}`)).status === 404);
+  await ria.client.post(`/api/overleggen/${kring}/members`, { email: tes.email });
+
+  // Een bestaand overleg besloten maken en weer openstellen.
+  const open = (await admin.post("/api/overleggen", { name: `Personeelszaken ${RUN}` })).data.id;
+  await admin.post(`/api/overleggen/${open}/members`, { email: ria.email, role: "secretaris" });
+  check("deelnemer mag een overleg niet besloten maken", (await admin.post(`/api/overleggen/${open}/members`, { email: tes.email })).status === 200 && (await tes.client.patch(`/api/overleggen/${open}`, { besloten: true })).status === 403);
+  check("secretaris maakt het overleg besloten", (await ria.client.patch(`/api/overleggen/${open}`, { besloten: true })).status === 200 && (await ria.client.get(`/api/overleggen/${open}`)).data.overleg.besloten === true);
+  check("een beheerder die zelf deelneemt, houdt toegang", (await admin.get(`/api/overleggen/${open}`)).status === 200);
+  check("haalt de secretaris hem eruit, dan is de toegang weg", (await ria.client.del(`/api/overleggen/${open}/members/${(await admin.get("/api/session")).data.user.id}`)).status === 200 && (await admin.get(`/api/overleggen/${open}`)).status === 404);
+  check("weer openstellen geeft het beheer de toegang terug", (await ria.client.patch(`/api/overleggen/${open}`, { besloten: false })).status === 200 && (await admin.get(`/api/overleggen/${open}`)).data?.role === "secretaris");
+  check("een beheerder die niet deelneemt, kan een overleg niet besloten maken", (await admin.patch(`/api/overleggen/${open}`, { besloten: true })).status === 403);
+
+  // Direct als besloten aanmaken, en herstel als de secretaris wegvalt.
+  const direct = await admin.post("/api/overleggen", { name: `Vertrouwenscommissie ${RUN}`, besloten: true });
+  const los = direct.data.id;
+  check("besloten overleg direct aanmaken", direct.status === 200 && (await admin.get(`/api/overleggen/${los}`)).data.overleg.besloten === true);
+  await admin.post(`/api/overleggen/${los}/members`, { email: nok.email, role: "secretaris" });
+  const adminId = (await admin.get("/api/session")).data.user.id;
+  check("de aanmaker stapt eruit en kan er daarna niet meer bij", (await admin.del(`/api/overleggen/${los}/members/${adminId}`)).status === 200 && (await admin.get(`/api/overleggen/${los}`)).status === 404 && (await nok.client.get(`/api/overleggen/${los}`)).status === 200);
+  check("de secretaris verlaat de organisatie", (await admin.del(`/api/organisations/${org1}/people/${nok.id}`)).status === 200);
+  const orphan = (await admin.get(`/api/organisations/${org1}/besloten`)).data.overleggen.find((o) => o.id === los);
+  check("het beheer ziet dat er geen secretaris meer is", orphan?.secretarissen.length === 0 && orphan.memberCount === 0, JSON.stringify(orphan));
+  check("nieuwe secretaris moet bij de organisatie horen", (await admin.post(`/api/organisations/${org1}/besloten/${los}/secretaris`, { userId: bui.id })).status === 404);
+  check("het beheer wijst een nieuwe secretaris aan", (await admin.post(`/api/organisations/${org1}/besloten/${los}/secretaris`, { userId: tes.id })).status === 200 && (await tes.client.get(`/api/overleggen/${los}`)).data?.role === "secretaris");
+  check("daarna is het weer aan de secretaris", (await admin.post(`/api/organisations/${org1}/besloten/${los}/secretaris`, { userId: ria.id })).status === 409 && (await admin.get(`/api/overleggen/${los}`)).status === 404);
+  check("herstel staat in het logboek", (await admin.get("/api/audit")).data.entries.some((e) => e.action === "POST /api/organisations/:id/besloten/:overlegId/secretaris"));
 }
 
 step("6. Afronden, vergrendeling en overnemen");
@@ -1136,6 +1320,10 @@ step("7b. Back-up en locatie van de gegevens");
   check("hoofdpunten staan vóór hun subpunten", (() => {
     const seen = new Set();
     return backup.tables.agenda_items.every((i) => (seen.add(i.id), !i.parent_id || seen.has(i.parent_id)));
+  })());
+  check("een besloten kring staat na het overleg waar hij bij hoort", backup.tables.overleggen.some((o) => o.parent_id && o.besloten === true) && (() => {
+    const seen = new Set();
+    return backup.tables.overleggen.every((o) => (seen.add(o.id), !o.parent_id || seen.has(o.parent_id)));
   })());
   const proef = await admin.post("/api/admin/backup/verify", { table: "agenda_items", rows: backup.tables.agenda_items });
   check("back-upbestand controleren: alles leesbaar en aanwezig, niets gewijzigd", proef.status === 200 && proef.data.readable === backup.tables.agenda_items.length && proef.data.present === proef.data.readable, JSON.stringify(proef.data));

@@ -4,7 +4,7 @@ import { api } from "../api";
 import { useAuth, useUser } from "../auth";
 import { LinkModal, type LinkInfo } from "../components/LinkModal";
 import type { Role } from "../lib";
-import { Button, Empty, Field, Form, Loader, useLoad, useRun, useToast } from "../ui";
+import { BeslotenBadge, Button, Empty, Field, Form, Loader, useLoad, useRun, useToast } from "../ui";
 
 type Person = {
   id: string;
@@ -14,8 +14,10 @@ type Person = {
   activated: boolean;
   isAdmin: boolean;
   hasPasskey: boolean;
-  overleggen: { id: string; name: string; role: Role }[];
+  overleggen: { id: string; name: string; role: Role; besloten: boolean; open: boolean }[];
 };
+
+type Besloten = { id: string; name: string; archived: boolean; parentName: string | null; memberCount: number; secretarissen: string[]; mine: boolean };
 
 type AiInfo = { enabled: boolean; available: boolean; month: { calls: number; inputTokens: number; outputTokens: number } };
 type Added = { name: string; email: string; created: boolean } & Partial<LinkInfo>;
@@ -147,8 +149,9 @@ export default function OrganisatiePage() {
                         {p.overleggen.length
                           ? p.overleggen.map((o) => (
                               <div key={o.id}>
-                                <Link to={`/overleggen/${o.id}?tab=leden`}>{o.name}</Link>
+                                {o.open ? <Link to={`/overleggen/${o.id}?tab=leden`}>{o.name}</Link> : o.name}
                                 {o.role === "secretaris" ? " (secretaris)" : ""}
+                                {o.besloten ? " · besloten" : ""}
                               </div>
                             ))
                           : "Geen overleg"}
@@ -189,6 +192,8 @@ export default function OrganisatiePage() {
             </p>
           </div>
         </section>
+
+        <BeslotenCard base={base} people={people} />
 
         <section className="card">
           <div className="card-head">
@@ -295,5 +300,74 @@ export default function OrganisatiePage() {
       </Loader>
       {link && <LinkModal link={link} onClose={() => setLink(null)} />}
     </div>
+  );
+}
+
+/** Besloten overleggen: de beheerder ziet dat ze bestaan en wie de secretaris is, niet de inhoud. */
+function BeslotenCard({ base, people }: { base: string; people: Person[] }) {
+  const run = useRun();
+  const { data, reload } = useLoad<{ overleggen: Besloten[] }>(`${base}/besloten`);
+  const [pick, setPick] = useState<Record<string, string>>({});
+  const list = data?.overleggen ?? [];
+  if (!list.length) return null;
+  return (
+    <section className="card">
+      <div className="card-head">
+        <h2 className="section-title">Besloten overleggen</h2>
+        <BeslotenBadge />
+      </div>
+      <ul className="list">
+        {list.map((o) => (
+          <li key={o.id} style={{ alignItems: "center", flexWrap: "wrap" }}>
+            <div className="grow" style={{ minWidth: 200 }}>
+              <strong>{o.mine ? <Link to={`/overleggen/${o.id}`}>{o.name}</Link> : o.name}</strong>
+              <div className="meta">
+                {o.parentName && <span>Kring van {o.parentName}</span>}
+                <span>
+                  {o.memberCount} {o.memberCount === 1 ? "deelnemer" : "deelnemers"}
+                </span>
+                {o.secretarissen.length ? <span>Secretaris: {o.secretarissen.join(", ")}</span> : <span className="badge warm">Geen secretaris</span>}
+                {o.archived && <span className="badge">Gearchiveerd</span>}
+              </div>
+            </div>
+            {o.secretarissen.length === 0 && (
+              <div className="row" style={{ gap: 4 }}>
+                <select
+                  className="input"
+                  style={{ width: "auto" }}
+                  aria-label={`Nieuwe secretaris voor ${o.name}`}
+                  value={pick[o.id] ?? ""}
+                  onChange={(e) => setPick({ ...pick, [o.id]: e.target.value })}
+                >
+                  <option value="">Kies een persoon</option>
+                  {people
+                    .filter((p) => p.active)
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                </select>
+                <Button
+                  small
+                  disabled={!pick[o.id]}
+                  onClick={async () => {
+                    if (await run(() => api(`${base}/besloten/${o.id}/secretaris`, { method: "POST", body: { userId: pick[o.id] } }), "Secretaris aangewezen")) reload();
+                  }}
+                >
+                  Aanwijzen
+                </Button>
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+      <div className="card-body" style={{ borderTop: "1px solid var(--line)" }}>
+        <p className="small muted">
+          Een besloten overleg is er alleen voor de deelnemers. Als beheerder zie je dat het bestaat en wie eraan deelneemt, niet de agenda, stukken, notulen,
+          besluiten of acties. Heeft een besloten overleg geen secretaris meer, dan wijs je hier een nieuwe aan; dat staat in het logboek van het platform.
+        </p>
+      </div>
+    </section>
   );
 }

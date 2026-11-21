@@ -88,7 +88,19 @@ check("vergadermodus loopt niet na terugzetten", detail.data.meeting.liveStarted
 const decisions = await call("GET", "/api/decisions");
 check("besluitenlijst met nummers is terug", decisions.data.decisions.length > 0 && decisions.data.decisions.every((d) => /^\d{4}-\d{3}$/.test(d.number)));
 // Nieuwe besluiten nummeren door, en het logboek loopt door (reeksnummers hersteld).
-const open = backup.tables.meetings.find((m) => m.status === "gepubliceerd");
+// Een besloten overleg blijft na terugzetten besloten: de beheerder van de organisatie kan er niet bij.
+const closedIds = new Set(backup.tables.overleggen.filter((o) => o.besloten).map((o) => o.id));
+const closed = backup.tables.meetings.find((m) => closedIds.has(m.overleg_id));
+if (closed) {
+  check(
+    "een besloten overleg blijft besloten voor de beheerder",
+    (await call("GET", `/api/meetings/${closed.id}`)).status === 404 && (await call("GET", `/api/overleggen/${closed.overleg_id}`)).status === 404,
+  );
+  const kring = backup.tables.overleggen.find((o) => o.parent_id);
+  const listed = (await call("GET", `/api/organisations/${org}/besloten`)).data.overleggen;
+  check("het beheer ziet de besloten kring met het overleg waar hij bij hoort", !kring || listed.some((o) => o.id === kring.id && !!o.parentName), JSON.stringify(listed));
+}
+const open = backup.tables.meetings.find((m) => m.status === "gepubliceerd" && !closedIds.has(m.overleg_id));
 if (open) {
   const next = await call("POST", `/api/meetings/${open.id}/decisions`, { text: "Besluit na terugzetten." });
   const numbers = new Set(backup.tables.decisions.map((d) => d.number));

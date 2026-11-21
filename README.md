@@ -25,7 +25,8 @@ Agenda's, stukken, besluiten en acties op één plek, zodat alle deelnemers alti
 - **Vraag het archief**: de AI-assistent beantwoordt vragen in gewone taal over eerdere besluiten, acties en notulen, met de bronnen erbij.
 - **Aan- en afmelden vanuit de e-mail**: de agendamail en de herinnering hebben knoppen waarmee een deelnemer zonder in te loggen laat weten of hij erbij is.
 - **Stemrondes**: een besluit nemen buiten de vergadering om. Deelnemers stemmen met één klik; een aangenomen voorstel krijgt een besluitnummer en staat met de stemverhouding in de besluitenlijst.
-- **Systeemcontrole** (platformbeheerder): één knop die database, opslag, AI-assistent, mailserver, Plaud en de dagelijkse herinneringen echt aanspreekt en zegt of ze werken, en die meldt in welke regio de gegevens staan.
+- **Besloten overleg en besloten kring**: een overleg dat alleen de deelnemers zien, ook beheerders van de organisatie niet. Bij een bestaand overleg maakt de secretaris een besloten kring voor een deel van de deelnemers, bijvoorbeeld de raad van toezicht zonder de bestuurder.
+- **Systeemcontrole** (platformbeheerder): één knop die database, opslag, AI-assistent, mailserver, Plaud en de dagelijkse herinneringen echt aanspreekt en zegt of ze werken, en die meldt in welke regio de gegevens staan. Dezelfde controle loopt elke ochtend vanzelf; werkt er iets niet, dan ziet de platformbeheerder dat in het menu en krijgt hij er bericht van.
 - **Back-up en terugzetten** (platformbeheerder): alle gegevens als één bestand downloaden en op een leeg platform terugzetten, voor een verhuizing of herstel.
 - **In gebruik nemen**: een lijst "Aan de slag" op het overzicht van de beheerder (verdwijnt als alles is ingericht), een uitlegpagina per rol in het menu, en de actie- en besluitenlijst als bestand voor Excel.
 - **Transcript en Plaud**: de secretaris zet het transcript van de opname bij de vergadering, opgehaald uit Plaud of geplakt als tekst (ook uit Teams of Zoom). De AI-assistent maakt er concept-notulen per agendapunt van; de secretaris loopt ze na en neemt ze over.
@@ -35,7 +36,7 @@ Agenda's, stukken, besluiten en acties op één plek, zodat alle deelnemers alti
 | Rol | Bereik | Kan |
 |---|---|---|
 | Platformbeheerder | Hele platform | Organisaties aanmaken, beheerders aanwijzen, accounts blokkeren, resetlinks maken. Ziet de inhoud van een organisatie alleen als beheerder of deelnemer daarvan. |
-| Beheerder | Eén organisatie | Overleggen aanmaken en archiveren, alle overleggen van de organisatie zien en beheren, toegang intrekken. |
+| Beheerder | Eén organisatie | Overleggen aanmaken en archiveren, alle overleggen van de organisatie zien en beheren, toegang intrekken. Van een besloten overleg ziet de beheerder alleen dat het bestaat en wie eraan deelneemt. |
 | Secretaris | Eén overleg | Agenda, notulen, besluiten, acties en deelnemers van dat overleg. |
 | Deelnemer | Eén overleg | Lezen, stukken aanleveren, aanwezigheid doorgeven, eigen acties afmelden. |
 
@@ -90,9 +91,31 @@ De knoppen in de mail openen `/aanwezigheid#<sleutel>~ja` (of `~nee`). De sleute
 
 Stemrecht hebben de deelnemers van het overleg; een beheerder die niet deelneemt, kijkt mee. De secretaris stelt de uitkomst vast volgens de regels van het overleg (meerderheid, unanimiteit, quorum): het platform telt, maar beslist niet. Een aangenomen voorstel wordt een gewoon besluit bij een vergadering van dat overleg (`server/routes/ballots.ts`).
 
-### Vertrouwelijke onderwerpen
+### Vertrouwelijke onderwerpen: besloten overleg
 
-Wie deelneemt aan een overleg, ziet alles van dat overleg. Afscherming per agendapunt is er bewust niet: elke plek waar inhoud naar buiten komt (agenda, stukken, zoeken, archiefvragen, e-mail, agenda-abonnement, vergadermodus) zou die uitzondering moeten kennen, en één gemiste plek is een lek. Voor een kleinere kring maak je een eigen overleg met alleen die deelnemers.
+Wie deelneemt aan een overleg, ziet alles van dat overleg. Afscherming per agendapunt is er bewust niet: elke plek waar inhoud naar buiten komt (agenda, stukken, zoeken, archiefvragen, e-mail, agenda-abonnement, vergadermodus) zou die uitzondering moeten kennen, en één gemiste plek is een lek. De afscherming zit daarom op het overleg.
+
+- **Besloten overleg** (`overleggen.besloten`): alleen de deelnemers hebben toegang. Beheerder van de organisatie zijn geeft die toegang niet; een gewoon overleg zien beheerders wel altijd. De uitzondering staat op de plekken die al bepalen wie wat ziet (`ACC` en `overlegAccess` in `server/access.ts`, het agenda-abonnement, de cijfers voor de beheerder), niet verspreid over de schermen.
+- **Besloten kring** (`overleggen.parent_id`): de secretaris van een overleg maakt een besloten overleg voor een deel van de deelnemers en wordt er zelf secretaris van. De overige deelnemers van het overleg zien de kring niet.
+- **Bestaand overleg**: besloten maken of weer openstellen kan alleen een secretaris die zelf deelneemt. Openstellen geeft beheerders ook toegang tot wat eerder is vastgelegd; het scherm waarschuwt daarvoor.
+- **Wat het beheer wel ziet**: onder Toegang en beheer staan de besloten overleggen met naam, aantal deelnemers en secretaris. Kies dus een naam die zelf niets verraadt.
+- **Er blijft een secretaris**: de laatste secretaris van een besloten overleg kan zichzelf niet verwijderen of terugzetten naar deelnemer. Valt die toch weg (account geblokkeerd, uit de organisatie gehaald), dan wijst een beheerder een nieuwe aan. Dat kan alleen als er geen actieve secretaris is, en het staat in het logboek.
+
+Grenzen, om te weten voordat je erop vertrouwt:
+
+- Een beheerder die het echt wil, kan de secretaris uit de organisatie halen en daarna een nieuwe aanwijzen. Dat zijn twee handelingen die in het logboek staan en die de betrokkene merkt; onzichtbaar meekijken kan niet.
+- De platformbeheerder kan met de back-up bij alle gegevens. Kies die persoon bewust.
+- Staat de AI-assistent aan, dan gaat tekst waarop een deelnemer hem gebruikt naar het taalmodel, ook uit een besloten overleg.
+
+De test (`scripts/e2e.mjs`, stap 5g) zet een kenmerkwoord in alle inhoud van een kring en controleert dat het bij de beheerder en bij een deelnemer buiten de kring nergens opduikt: niet in overzichten, zoekresultaten, besluiten, acties, cijfers, het agenda-abonnement of een archiefvraag.
+
+### Systeemcontrole en zelftest
+
+De controle spreekt elk onderdeel echt aan (`server/routes/system.ts`): een zoekvraag op de database, de opslag, één klein verzoek aan het taalmodel, aanmelden bij de mailserver, de aanmeldpagina van Plaud en het spoor van de dagelijkse taak.
+
+- De platformbeheerder start hem met de knop onder Platformbeheer, Instellingen.
+- De dagelijkse taak doet hem elke ochtend na de herinneringen en bewaart de uitslag. Werkt er iets niet, dan staat er een stip bij Platformbeheer in het menu en een melding op het overzicht, en krijgen de platformbeheerders één bericht per dag (als de mailserver het zelf wel doet).
+- `/api/health` toont de laatste uitslag per onderdeel (`zelftest`: ok, fout, uit of let_op, zonder toelichting). Is die ouder dan twintig uur of nog nooit gedaan, dan start de health-controle een zelftest in de achtergrond; een claim in de database laat dat hooguit één keer per twintig uur toe, wie de pagina ook opvraagt. Na een publicatie is zo binnen een minuut te zien of de onderdelen in productie werken.
 
 ### Waar de gegevens staan
 
@@ -182,10 +205,10 @@ De film wordt opgenomen door een script dat met fictieve gegevens door de scherm
 
 1. Start de lokale server met een lege database en `scripts/film/demo.env` als `.env`, en draai de migraties.
 2. `node scripts/film/seed-demo.cjs > demo.json` vult de demogegevens.
-3. `REC=1 node scripts/film/film.cjs uit "$(cat demo.json)"` neemt de beelden op (zonder `REC=1`: alleen schermafbeeldingen, als snelle controle).
-4. `node scripts/film/montage.cjs uit instructiefilm.mp4` maakt de film met ondertitels.
+3. `REC=1 node scripts/film/film.cjs uit "$(cat demo.json)"` neemt de beelden op (zonder `REC=1`: alleen schermafbeeldingen, als snelle controle). Het script start zelf een nagebouwde mailserver op poort 2525 voor de scène waarin de agenda wordt gemaild. Elke opname begint met verse demogegevens: stap 1 en 2 opnieuw.
+4. `node scripts/film/montage.cjs uit public/instructiefilm.mp4` maakt de film met ondertitels; `ffmpeg -ss 53 -i public/instructiefilm.mp4 -frames:v 1 -vf scale=1280:-1 -q:v 4 public/instructiefilm.jpg` maakt het stilstaande beeld.
 
-De samenvatting en de voorstellen in de film komen uit de lokale testmodus, niet uit het taalmodel.
+De film staat op de pagina Uitleg (`public/instructiefilm.mp4`) en wordt pas opgehaald als iemand op afspelen klikt. De samenvatting, de voorstellen en het antwoord uit het archief in de film komen uit de lokale testmodus, niet uit het taalmodel.
 
 ## Instellingen (Netlify-omgevingsvariabelen)
 

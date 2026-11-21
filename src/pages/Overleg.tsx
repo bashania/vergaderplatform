@@ -10,15 +10,21 @@ import { LinkModal, type LinkInfo } from "../components/LinkModal";
 import { ActionList, DecisionTable } from "../components/Records";
 import { SuggestionsCard } from "../components/Suggestions";
 import { fromLocalInput, toLocalInput, type Action, type Decision, type Doc, type Member, type MeetingSummary, type Role } from "../lib";
-import { Button, Empty, Field, Form, Loader, Modal, useLoad, useRun } from "../ui";
+import { BeslotenBadge, Button, Empty, Field, Form, Loader, Modal, useLoad, useRun } from "../ui";
 import { AGENDA_TEMPLATES } from "../templates";
 import { MeetingRow } from "./Dashboard";
 
 type OverlegDetail = {
-  overleg: { id: string; name: string; description: string; archived: boolean; organisationId: string; organisationName: string };
+  overleg: { id: string; name: string; description: string; archived: boolean; besloten: boolean; isKring: boolean; organisationId: string; organisationName: string };
   /** De gebruiker is beheerder van de organisatie van dit overleg. */
   orgAdmin: boolean;
   role: Role;
+  /** De rol als deelnemer, los van het beheer van de organisatie. */
+  memberRole: Role | null;
+  /** Bij een besloten kring: het overleg waar hij bij hoort, als de gebruiker dat ook ziet. */
+  parent: { id: string; name: string } | null;
+  /** Besloten kringen van dit overleg waar de gebruiker zelf in zit. */
+  kringen: { id: string; name: string; memberCount: number }[];
   members: Member[];
   meetings: MeetingSummary[];
   documents: Doc[];
@@ -154,6 +160,9 @@ function EditOverleg({ data, onClose, onSaved }: { data: OverlegDetail; onClose:
   const [name, setName] = useState(data.overleg.name);
   const [description, setDescription] = useState(data.overleg.description);
   const [archived, setArchived] = useState(data.overleg.archived);
+  const [besloten, setBesloten] = useState(data.overleg.besloten);
+  // Besloten maken of openstellen kan alleen wie zelf als secretaris deelneemt.
+  const maySeal = data.memberRole === "secretaris";
   return (
     <Modal title="Overleg bewerken" onClose={onClose}>
       <Form
@@ -161,6 +170,7 @@ function EditOverleg({ data, onClose, onSaved }: { data: OverlegDetail; onClose:
         onSubmit={async () => {
           const body: Record<string, unknown> = { name, description };
           if (data.orgAdmin) body.archived = archived;
+          if (maySeal) body.besloten = besloten;
           await api(`/api/overleggen/${data.overleg.id}`, { method: "PATCH", body });
           onSaved();
         }}
@@ -176,6 +186,19 @@ function EditOverleg({ data, onClose, onSaved }: { data: OverlegDetail; onClose:
             <input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} />
             Gearchiveerd (blijft raadpleegbaar, verdwijnt uit de overzichten)
           </label>
+        )}
+        {maySeal && (
+          <label className="check">
+            <input type="checkbox" checked={besloten} onChange={(e) => setBesloten(e.target.checked)} />
+            Besloten: alleen de deelnemers zien dit overleg
+          </label>
+        )}
+        {maySeal && besloten !== data.overleg.besloten && (
+          <p className="notice warm small">
+            {besloten
+              ? "Na het opslaan kunnen beheerders van de organisatie die niet deelnemen er niet meer bij. Ze zien nog wel dat het overleg bestaat en wie eraan deelneemt."
+              : "Na het opslaan kunnen de beheerders van de organisatie weer alles van dit overleg zien, ook wat eerder is vastgelegd."}
+          </p>
         )}
       </Form>
     </Modal>
@@ -294,6 +317,98 @@ function Members({ data, canEdit, onChanged }: { data: OverlegDetail; canEdit: b
   );
 }
 
+function NewKring({ data, onClose }: { data: OverlegDetail; onClose: () => void }) {
+  const navigate = useNavigate();
+  const user = useUser();
+  const [name, setName] = useState(`${data.overleg.name} (besloten)`.slice(0, 120));
+  const [chosen, setChosen] = useState<string[]>([]);
+  const others = data.members.filter((m) => m.id !== user.id && m.active !== false);
+  return (
+    <Modal title="Besloten kring maken" onClose={onClose}>
+      <Form
+        submitLabel="Kring maken"
+        onCancel={onClose}
+        onSubmit={async () => {
+          const { id } = await api<{ id: string }>(`/api/overleggen/${data.overleg.id}/kring`, { method: "POST", body: { name, memberIds: chosen } });
+          navigate(`/overleggen/${id}?tab=leden`);
+        }}
+      >
+        <Field label="Naam">
+          <input className="input" required autoFocus maxLength={120} value={name} onChange={(e) => setName(e.target.value)} />
+        </Field>
+        <fieldset className="choices">
+          <legend>Wie zitten in de kring?</legend>
+          {others.length ? (
+            others.map((m) => (
+              <label className="check" key={m.id}>
+                <input
+                  type="checkbox"
+                  checked={chosen.includes(m.id)}
+                  onChange={(e) => setChosen((c) => (e.target.checked ? [...c, m.id] : c.filter((x) => x !== m.id)))}
+                />
+                {m.name}
+              </label>
+            ))
+          ) : (
+            <span className="muted small">Dit overleg heeft nog geen andere deelnemers.</span>
+          )}
+        </fieldset>
+        <p className="small muted">
+          Je wordt zelf secretaris van de kring. Alleen wie je hier kiest, ziet de kring en wat erin staat. De andere deelnemers van dit overleg zien hem
+          niet. Beheerders van de organisatie zien dat de kring bestaat en wie erin zit, niet de inhoud.
+        </p>
+      </Form>
+    </Modal>
+  );
+}
+
+/** Besloten kringen van dit overleg: voor wat niet met iedereen in het overleg gedeeld wordt. */
+function KringCard({ data, canEdit }: { data: OverlegDetail; canEdit: boolean }) {
+  const [creating, setCreating] = useState(false);
+  // Een kring heeft zelf geen kring.
+  if (data.overleg.isKring || data.overleg.archived) return null;
+  if (!canEdit && !data.kringen.length) return null;
+  return (
+    <section className="card">
+      <div className="card-head">
+        <h2 className="section-title">Besloten kring</h2>
+        {canEdit && (
+          <Button small variant="secondary" icon="lock" onClick={() => setCreating(true)}>
+            Besloten kring maken
+          </Button>
+        )}
+      </div>
+      {data.kringen.length > 0 && (
+        <ul className="list">
+          {data.kringen.map((k) => (
+            <li key={k.id} style={{ alignItems: "center" }}>
+              <div className="grow">
+                <Link to={`/overleggen/${k.id}`}>
+                  <strong>{k.name}</strong>
+                </Link>
+                <div className="meta">
+                  <span>
+                    {k.memberCount} {k.memberCount === 1 ? "deelnemer" : "deelnemers"}
+                  </span>
+                </div>
+              </div>
+              <BeslotenBadge />
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="card-body" style={data.kringen.length ? { borderTop: "1px solid var(--line)" } : undefined}>
+        <p className="small muted">
+          Voor wat niet met iedereen in dit overleg gedeeld wordt, zoals een vooroverleg zonder de bestuurder of een personeelszaak. Een kring is een eigen,
+          besloten overleg voor een deel van de deelnemers, met eigen vergaderingen, stukken, besluiten en acties. Je ziet hier alleen de kringen waar je zelf
+          in zit.
+        </p>
+      </div>
+      {creating && <NewKring data={data} onClose={() => setCreating(false)} />}
+    </section>
+  );
+}
+
 export default function OverlegPage() {
   const { id } = useParams();
   const user = useUser();
@@ -328,10 +443,33 @@ export default function OverlegPage() {
               <div>
                 <div className="crumb">
                   <Link to="/overleggen">Overleggen</Link>
+                  {data.parent && (
+                    <>
+                      {" › "}
+                      <Link to={`/overleggen/${data.parent.id}`}>{data.parent.name}</Link>
+                    </>
+                  )}
                 </div>
-                <h1>{data.overleg.name}</h1>
+                <div className="row">
+                  <h1>{data.overleg.name}</h1>
+                  {data.overleg.besloten && <BeslotenBadge />}
+                  {data.overleg.archived && <span className="badge">Gearchiveerd</span>}
+                </div>
                 {data.overleg.description && <p className="lead pre">{data.overleg.description}</p>}
-                {data.overleg.archived && <span className="badge">Gearchiveerd</span>}
+                {data.overleg.besloten && (
+                  <p className="small muted">Alleen de deelnemers zien dit overleg. Beheerders van de organisatie zien dat het bestaat, niet wat erin staat.</p>
+                )}
+                {data.kringen.length > 0 && (
+                  <p className="small">
+                    Besloten kring:{" "}
+                    {data.kringen.map((k, i) => (
+                      <span key={k.id}>
+                        {i > 0 && ", "}
+                        <Link to={`/overleggen/${k.id}`}>{k.name}</Link>
+                      </span>
+                    ))}
+                  </p>
+                )}
               </div>
               {canEdit && (
                 <div className="actions">
@@ -431,6 +569,7 @@ export default function OverlegPage() {
             )}
 
             {tab === "leden" && <Members data={data} canEdit={canEdit} onChanged={reload} />}
+            {tab === "leden" && <KringCard data={data} canEdit={canEdit} />}
 
             {modal === "meeting" && <NewMeeting data={data} onClose={() => setModal(null)} />}
             {planFrom && !modal && <NewMeeting data={data} from={planFrom} onClose={() => setSp({}, { replace: true })} />}

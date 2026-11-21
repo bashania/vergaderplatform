@@ -114,7 +114,7 @@ route.get(
         WHERE mt.status <> 'concept' AND NOT o.archived AND NOT org.archived
           AND mt.starts_at > now() - interval '60 days'
           AND (EXISTS (SELECT 1 FROM memberships m WHERE m.overleg_id = o.id AND m.user_id = $1)
-               OR EXISTS (SELECT 1 FROM organisation_admins a WHERE a.organisation_id = org.id AND a.user_id = $1))
+               OR (NOT o.besloten AND EXISTS (SELECT 1 FROM organisation_admins a WHERE a.organisation_id = org.id AND a.user_id = $1)))
         ORDER BY mt.starts_at LIMIT 400`,
       [user.id],
     );

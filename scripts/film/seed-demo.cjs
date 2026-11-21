@@ -81,13 +81,20 @@ const BEGROTING = page(
 
   const overleg = (await post("/api/overleggen", { name: "Bestuursoverleg", description: "Maandelijks overleg van het bestuur van de bewonerscommissie." })).id;
   const people = {};
+  const invites = {};
   for (const [name, email] of [
     ["Karim El Amrani", "karim@delinde.example"],
     ["Lotte de Boer", "lotte@delinde.example"],
     ["Peter Janssen", "peter@delinde.example"],
   ]) {
-    people[name] = (await post(`/api/overleggen/${overleg}/members`, { email, name })).userId;
+    const added = await post(`/api/overleggen/${overleg}/members`, { email, name });
+    people[name] = added.userId;
+    invites[name] = added.token;
   }
+
+  // Het platform verstuurt zelf e-mail; de film vangt die op met een nagebouwde mailserver op poort 2525.
+  await call("PUT", "/api/admin/mail", { host: "localhost", port: 2525, security: "geen", user: "mailer", pass: "geheim", fromName: "Bewonerscommissie De Linde", fromAddress: "vergaderen@delinde.example" });
+  await post("/api/account/calendar");
 
   // Vorige vergadering: afgerond, met een openstaande actie voor het dashboard.
   const vorige = (
@@ -135,7 +142,20 @@ const BEGROTING = page(
   await upload({ meetingId: meeting, agendaItemId: items[2].id }, "Voorstel groenplan binnentuin.pdf", groenplan);
   await upload({ meetingId: meeting, agendaItemId: items[3].id }, "Conceptbegroting 2027.pdf", begroting);
   await patch(`/api/meetings/${meeting}`, { status: "gepubliceerd" });
-  for (const id of Object.values(people)) await call("PUT", `/api/meetings/${meeting}/attendance`, { userId: id, status: "aanwezig" });
+  // Karim heeft nog niets laten weten: hij meldt zich in de film aan vanuit de e-mail.
+  for (const [name, id] of Object.entries(people)) {
+    if (name !== "Karim El Amrani") await call("PUT", `/api/meetings/${meeting}/attendance`, { userId: id, status: "aanwezig" });
+  }
+
+  // Karim draagt een agendapunt aan; daarvoor accepteert hij eerst zijn uitnodiging.
+  const mine = cookie;
+  cookie = "";
+  await post(`/api/tokens/${invites["Karim El Amrani"]}`, { password: "demo-wachtwoord-van-karim" });
+  await post(`/api/overleggen/${overleg}/suggestions`, {
+    title: "Fietsenstalling uitbreiden",
+    description: "De stalling staat elke avond vol. Kunnen we de verhuurder vragen om extra rekken?",
+  });
+  cookie = mine;
 
   console.log(JSON.stringify({ meeting, org, ...ADMIN }));
 })().catch((e) => {

@@ -14,7 +14,7 @@ const NAV: { to: string; label: string; icon: IconName; end?: boolean }[] = [
 
 export default function Layout() {
   const user = useUser();
-  const { logout, orgName, org, organisations, selectOrg } = useAuth();
+  const { logout, orgName, org, organisations, selectOrg, systemIssues } = useAuth();
   const [open, setOpen] = useState(false);
   const [term, setTerm] = useState("");
   const location = useLocation();
@@ -116,6 +116,7 @@ export default function Layout() {
               <NavLink to="/beheer">
                 <Icon name="settings" />
                 Platformbeheer
+                {!!systemIssues?.length && <span className="nav-dot" role="img" aria-label={`Werkt niet: ${systemIssues.join(", ")}`} title={`Werkt niet: ${systemIssues.join(", ")}`} />}
               </NavLink>
             </>
           )}

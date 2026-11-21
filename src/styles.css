@@ -175,6 +175,13 @@ textarea {
   font-weight: 600;
   text-decoration: none;
 }
+.nav-dot {
+  width: 9px;
+  height: 9px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: var(--amber, #f59e0b);
+}
 .nav a:hover {
   background: rgb(255 255 255 / 10%);
   color: #fff;
@@ -581,6 +588,24 @@ textarea.input {
   width: 18px;
   height: 18px;
   accent-color: var(--accent);
+}
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.choices legend {
+  padding: 0;
+  margin-bottom: 6px;
+  font-size: 0.87rem;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.choices .check {
+  font-weight: 500;
 }
 .notice {
   padding: 10px 14px;
@@ -1406,7 +1431,16 @@ dialog.modal::backdrop {
   gap: 8px;
   padding: 8px 0 2px 18px;
 }
-.help-body ol {
+.help-film {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 10;
+  border-radius: 8px;
+  background: #13283b;
+}
+.help-body ol,
+.help-body ul {
   margin: 0;
   padding-left: 20px;
 }

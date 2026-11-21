@@ -27,6 +27,10 @@ export type Overleg = {
   name: string;
   description: string;
   archived: boolean;
+  /** Alleen de deelnemers zien dit overleg; beheerders van de organisatie niet. */
+  besloten: boolean;
+  /** Bij een besloten kring: het overleg waar hij bij hoort, als de gebruiker dat ook ziet. */
+  parentName: string | null;
   role: Role;
   memberCount: number;
   openActions: number;
@@ -128,6 +132,8 @@ export type Meeting = {
   overlegName: string;
   organisationId: string;
   organisationName: string;
+  /** Vergadering van een besloten overleg. */
+  besloten?: boolean;
   title: string;
   startsAt: string;
   durationMin: number;

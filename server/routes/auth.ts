@@ -13,6 +13,7 @@ import { mailEnabled } from "../mail";
 import { q, q1 } from "../db";
 import { bad, email, env, HttpError, notFound, optStr, str } from "../http";
 import { route } from "../router";
+import { systemIssues } from "./system";
 
 /** Organisaties waar de gebruiker bij mag: als beheerder, of via deelname aan een overleg. */
 function myOrganisations(userId: string) {
@@ -34,7 +35,7 @@ function myOrganisations(userId: string) {
 route.get(
   "/api/session",
   async (c) => {
-    const [org, anyUser, organisations, account, mail] = await Promise.all([
+    const [org, anyUser, organisations, account, mail, issues] = await Promise.all([
       q1<{ value: string }>(`SELECT value FROM settings WHERE key = 'orgName'`),
       // Geen accounts, of een terugzetactie die nog loopt: dan staat het inrichtscherm klaar.
       c.user ? null : q1(`SELECT 1 AS x FROM users WHERE NOT EXISTS (SELECT 1 FROM settings WHERE key = 'restore.busy') LIMIT 1`),
@@ -49,10 +50,12 @@ route.get(
         : null,
       // Kan het platform zelf mailen? Dan biedt het scherm dat aan in plaats van je eigen mailprogramma.
       c.user ? mailEnabled() : false,
+      // Alleen voor de platformbeheerder: wat de laatste zelftest als kapot meldde.
+      c.user?.isAdmin ? systemIssues().catch(() => [] as string[]) : ([] as string[]),
     ]);
     // strong = deze sessie is met een passkey ingelogd; alleen die opent organisaties met passkey-eis.
     const user = c.user ? { ...c.user, hasPassword: account?.hasPassword ?? false, passkeys: account?.passkeys ?? 0 } : null;
-    return { user, orgName: org?.value ?? "", setupNeeded: !c.user && !anyUser, organisations, aiAvailable: !!c.user && aiAvailable(), mailEnabled: mail };
+    return { user, orgName: org?.value ?? "", setupNeeded: !c.user && !anyUser, organisations, aiAvailable: !!c.user && aiAvailable(), mailEnabled: mail, systemIssues: issues };
   },
   { public: true },
 );

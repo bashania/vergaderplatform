@@ -1,8 +1,9 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, errorText } from "../api";
+import { useAuth } from "../auth";
 import { type BackupCheck, downloadBackup, verifyBackup } from "../backup";
 import { fmtDateTime } from "../lib";
-import { Button, useRun, useToast } from "../ui";
+import { Button, useLoad, useRun, useToast } from "../ui";
 
 /** Platformbeheer: alle gegevens als één bestand downloaden, om te bewaren of om mee te verhuizen. */
 export function BackupCard() {
@@ -99,13 +100,22 @@ type Check = { key: string; label: string; status: "ok" | "fout" | "uit" | "let_
 /** Platformbeheer: één knop die elk onderdeel echt aanspreekt en zegt of het werkt. */
 export function SystemCheckCard() {
   const run = useRun();
-  const [state, setState] = useState<{ busy: boolean; checks?: Check[]; at?: string; error?: string }>({ busy: false });
+  const { refresh } = useAuth();
+  const [state, setState] = useState<{ busy: boolean; checks?: Check[]; at?: string; by?: string; error?: string }>({ busy: false });
+  // De uitslag van de laatste controle (meestal de automatische van vanochtend) staat er direct.
+  const last = useLoad<{ last: { at: string; by: string; checks: Check[] } | null }>("/api/admin/system/last");
+  useEffect(() => {
+    const l = last.data?.last;
+    if (l) setState((s) => (s.checks || s.busy ? s : { busy: false, checks: l.checks, at: l.at, by: l.by }));
+  }, [last.data]);
 
   async function check() {
     setState((s) => ({ ...s, busy: true, error: undefined }));
     try {
       const r = await api<{ checks: Check[]; at: string }>("/api/admin/system/check", { method: "POST", body: {} });
-      setState({ busy: false, checks: r.checks, at: r.at });
+      setState({ busy: false, checks: r.checks, at: r.at, by: "beheerder" });
+      // De stip in het menu volgt de nieuwe uitslag.
+      void refresh();
     } catch (e) {
       setState((s) => ({ ...s, busy: false, error: errorText(e) }));
     }
@@ -140,7 +150,7 @@ export function SystemCheckCard() {
                 {wrong ? `${wrong} ${wrong === 1 ? "onderdeel werkt" : "onderdelen werken"} niet.` : "Alles wat is ingericht, werkt."}
                 {attention ? ` ${attention} ${attention === 1 ? "punt vraagt" : "punten vragen"} je aandacht.` : ""}
               </strong>
-              {state.at ? ` Gecontroleerd op ${fmtDateTime(state.at)}.` : ""}
+              {state.at ? ` Gecontroleerd op ${fmtDateTime(state.at)}${state.by === "taak" ? " door de dagelijkse controle" : state.by === "bewaking" ? " door de automatische bewaking" : ""}.` : ""}
             </div>
             <ul className="list" style={{ margin: 0 }}>
               {state.checks.map((c) => (
@@ -173,6 +183,10 @@ export function SystemCheckCard() {
             </div>
           </>
         )}
+        <p className="small muted">
+          Deze controle loopt ook elke ochtend vanzelf, tegelijk met de herinneringen. Werkt er dan iets niet, dan zie je een stip bij Platformbeheer in het
+          menu, en krijg je er bericht van als de mailserver is ingesteld.
+        </p>
       </div>
     </section>
   );

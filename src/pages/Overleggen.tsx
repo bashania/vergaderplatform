@@ -3,19 +3,20 @@ import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { fmtDateTime, type Overleg } from "../lib";
-import { Button, Empty, Field, Form, Loader, Modal, useLoad } from "../ui";
+import { BeslotenBadge, Button, Empty, Field, Form, Loader, Modal, useLoad } from "../ui";
 
 function NewOverleg({ organisation, onClose }: { organisation: string; onClose: () => void }) {
   const navigate = useNavigate();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [besloten, setBesloten] = useState(false);
   return (
     <Modal title={`Nieuw overleg bij ${organisation}`} onClose={onClose}>
       <Form
         submitLabel="Aanmaken"
         onCancel={onClose}
         onSubmit={async () => {
-          const { id } = await api<{ id: string }>("/api/overleggen", { method: "POST", body: { name, description } });
+          const { id } = await api<{ id: string }>("/api/overleggen", { method: "POST", body: { name, description, besloten } });
           navigate(`/overleggen/${id}?tab=leden`);
         }}
       >
@@ -25,7 +26,15 @@ function NewOverleg({ organisation, onClose }: { organisation: string; onClose: 
         <Field label="Omschrijving (optioneel)" hint="Doel, frequentie of vaste afspraken van dit overleg.">
           <textarea className="input" maxLength={1000} value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>
-        <p className="small muted">Je wordt zelf secretaris van dit overleg. Daarna voeg je de deelnemers toe.</p>
+        <label className="check">
+          <input type="checkbox" checked={besloten} onChange={(e) => setBesloten(e.target.checked)} />
+          Besloten overleg
+        </label>
+        <p className="small muted">
+          {besloten
+            ? "Alleen de deelnemers zien dit overleg. Beheerders van de organisatie zien dat het bestaat en wie eraan deelneemt, niet de inhoud. Je wordt zelf secretaris; haal je jezelf er later uit, dan kun je er ook zelf niet meer bij."
+            : "Je wordt zelf secretaris van dit overleg. Daarna voeg je de deelnemers toe."}
+        </p>
       </Form>
     </Modal>
   );
@@ -95,8 +104,12 @@ function OverlegCard({ o }: { o: Overleg }) {
               {o.name}
             </Link>
           </h2>
-          {o.role === "secretaris" && <span className="badge accent">Secretaris</span>}
+          <span className="row" style={{ gap: 4 }}>
+            {o.besloten && <BeslotenBadge />}
+            {o.role === "secretaris" && <span className="badge accent">Secretaris</span>}
+          </span>
         </div>
+        {o.parentName && <p className="muted small">Besloten kring van {o.parentName}</p>}
         {o.description && <p className="muted small pre">{o.description}</p>}
         <div className="meta">
           <span>
