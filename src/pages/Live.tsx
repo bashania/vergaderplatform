@@ -5,6 +5,7 @@ import { useAuth, useUser } from "../auth";
 import { DocList, UploadButton } from "../components/Docs";
 import { canStage, DocStage } from "../components/DocStage";
 import { ActionItem, ActionModal, DecisionModal } from "../components/Records";
+import { MyNote, useMyNotes } from "../components/MyNote";
 import { LiveTimer } from "../components/Screen";
 import { WatchModal } from "../components/Watch";
 import { agendaOrder, fmtClock, fmtTime, labelTone, type Action, type AgendaItem, type Decision, type Doc, type LiveState, type MeetingDetail } from "../lib";
@@ -110,6 +111,7 @@ export default function LivePage() {
     [reload],
   );
 
+  const myNotes = useMyNotes(data?.myNotes);
   const organisationId = data?.meeting.organisationId;
   useEffect(() => {
     if (organisationId) ensureOrg(organisationId);
@@ -452,6 +454,8 @@ export default function LivePage() {
                   )}
                 </div>
               )}
+
+              <MyNote itemId={shown.item.id} initial={myNotes.get(shown.item.id)} onSaved={myNotes.set} open={!isSec} />
 
               {isSec && !locked ? (
                 <LiveNotes item={shown.item} onSaved={reload} />

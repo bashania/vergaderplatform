@@ -29,6 +29,7 @@ const TABLES: Table[] = [
   { name: "meetings", order: "id", page: 100, strip: ["live_started_at", "live_item_id", "live_item_started_at", "live_doc_id", "live_doc_page", "watch_token", "watch_code", "watch_until"] },
   // Hoofdpunten vóór hun subpunten.
   { name: "agenda_items", order: "(parent_id IS NOT NULL), id", page: 50 },
+  { name: "personal_notes", order: "user_id, agenda_item_id", page: 300 },
   { name: "documents", order: "id", page: 300, where: "status = 'ready'" },
   { name: "decision_counters", order: "overleg_id, year", page: 500 },
   { name: "decisions", order: "id", page: 200 },

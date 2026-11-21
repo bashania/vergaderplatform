@@ -1359,6 +1359,17 @@ dialog.modal::backdrop {
 .live-timer.over .bar > div {
   background: var(--warm);
 }
+.my-note {
+  padding: 10px 12px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--accent-wash);
+}
+.my-note .sub-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
 .live-notes {
   min-height: 160px;
   font-size: 1rem;

@@ -4,6 +4,9 @@
 # (.github/workflows/test.yml) en ook met de hand te draaien na `npm run build`.
 set -e
 cd "$(dirname "$0")/.."
+# Een server die nog draait eerst stoppen: de test verwacht een lege database.
+pkill -f "netlify dev" 2>/dev/null || true
+while pgrep -f "netlify dev" > /dev/null; do sleep 1; done
 cp scripts/test.env .env
 # Lege database en lege opslag; een koppeling met een Netlify-project (.netlify/state.json) blijft staan.
 rm -rf .netlify/db .netlify/blobs-serve

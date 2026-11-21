@@ -89,8 +89,10 @@ const decisions = await call("GET", "/api/decisions");
 check("besluitenlijst met nummers is terug", decisions.data.decisions.length > 0 && decisions.data.decisions.every((d) => /^\d{4}-\d{3}$/.test(d.number)));
 // Nieuwe besluiten nummeren door, en het logboek loopt door (reeksnummers hersteld).
 // Een besloten overleg blijft na terugzetten besloten: de beheerder van de organisatie kan er niet bij.
+// Alleen een besloten overleg waar de beheerder zelf niet aan deelneemt: als deelnemer mag hij er wel bij.
 const closedIds = new Set(backup.tables.overleggen.filter((o) => o.besloten).map((o) => o.id));
-const closed = backup.tables.meetings.find((m) => closedIds.has(m.overleg_id));
+const memberOf = new Set(backup.tables.memberships.filter((m) => m.user_id === session.data.user.id).map((m) => m.overleg_id));
+const closed = backup.tables.meetings.find((m) => closedIds.has(m.overleg_id) && !memberOf.has(m.overleg_id));
 if (closed) {
   check(
     "een besloten overleg blijft besloten voor de beheerder",
@@ -99,6 +101,13 @@ if (closed) {
   const kring = backup.tables.overleggen.find((o) => o.parent_id);
   const listed = (await call("GET", `/api/organisations/${org}/besloten`)).data.overleggen;
   check("het beheer ziet de besloten kring met het overleg waar hij bij hoort", !kring || listed.some((o) => o.id === kring.id && !!o.parentName), JSON.stringify(listed));
+}
+const notes = backup.tables.personal_notes ?? [];
+if (notes.length) {
+  // Eigen aantekeningen komen mee terug, en blijven van hun eigenaar: de beheerder krijgt ze niet te zien.
+  const item = backup.tables.agenda_items.find((i) => i.id === notes[0].agenda_item_id);
+  const seen = await call("GET", `/api/meetings/${item.meeting_id}`);
+  check("eigen aantekeningen van een ander blijven na terugzetten verborgen", seen.status === 200 && !JSON.stringify(seen.data).includes(notes[0].text) && notes[0].user_id !== session.data.user.id);
 }
 const open = backup.tables.meetings.find((m) => m.status === "gepubliceerd" && !closedIds.has(m.overleg_id));
 if (open) {

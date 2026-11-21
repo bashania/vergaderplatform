@@ -91,7 +91,7 @@ function AskArchive({ initial }: { initial: string }) {
 }
 
 type Result = {
-  type: "vergadering" | "agendapunt" | "besluit" | "actie" | "stuk";
+  type: "vergadering" | "agendapunt" | "besluit" | "actie" | "stuk" | "aantekening";
   id: string;
   title: string;
   snippet: string;
@@ -108,6 +108,7 @@ const TYPE_LABEL: Record<Result["type"], string> = {
   besluit: "Besluit",
   actie: "Actie",
   stuk: "Stuk",
+  aantekening: "Eigen aantekening",
 };
 
 export default function ZoekenPage() {
